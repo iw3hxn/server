@@ -673,10 +673,7 @@ class BaseModel(object):
     _group_by_full = {}
 
     # Transience
-    _transient = False # True in a TransientModel
-    _transient_max_count = None
-    _transient_max_hours = None
-    _transient_check_time = 20
+    _transient = False  # True in a TransientModel
 
     # structure:
     #  { 'parent_model': 'm2o_field', ... }
@@ -1057,10 +1054,11 @@ class BaseModel(object):
         # Transience
         if self.is_transient():
             self._transient_check_count = 0
-            self._transient_max_count = config.get('osv_memory_count_limit')
-            self._transient_max_hours = config.get('osv_memory_age_limit')
-            assert self._log_access, "TransientModels must have log_access turned on, "\
-                                     "in order to implement their access rights policy"
+            self._transient_max_count = config.get('osv_memory_count_limit', 0)
+            self._transient_max_hours = config.get('osv_memory_age_limit', 0)
+            assert self._log_access, (
+                    "TransientModels must have log_access turned on, "
+                    "in order to implement their access rights policy")
 
     def __export_row(self, cr, uid, row, fields, context=None):
         if context is None:
@@ -4881,46 +4879,38 @@ class BaseModel(object):
         """
         return self._transient
 
-    def _transient_clean_rows_older_than(self, cr, seconds):
-        assert self._transient, "Model %s is not transient, it cannot be vacuumed!" % self._name
-        cr.execute("SELECT id FROM " + self._table + " WHERE"
-            " COALESCE(write_date, create_date, (now() at time zone 'UTC'))::timestamp <"
-            " ((now() at time zone 'UTC') - interval %s)", ("%s seconds" % seconds,))
-        ids = [x[0] for x in cr.fetchall()]
-        self.unlink(cr, SUPERUSER_ID, ids)
-
-    def _transient_clean_old_rows(self, cr, count):
-        assert self._transient, "Model %s is not transient, it cannot be vacuumed!" % self._name
-        cr.execute(
-            "SELECT id, COALESCE(write_date, create_date, (now() at time zone 'UTC'))::timestamp"
-            " AS t FROM " + self._table +
-            " ORDER BY t LIMIT %s", (count,))
-        ids = [x[0] for x in cr.fetchall()]
-        self.unlink(cr, SUPERUSER_ID, ids)
-
     def _transient_vacuum(self, cr, uid, force=False):
         """Clean the transient records.
 
         This unlinks old records from the transient model tables whenever the
         "_transient_max_count" or "_max_age" conditions (if any) are reached.
-        Actual cleaning will happen only once every "_transient_check_time" calls.
+        Actual cleaning will happen only once every "_transient_check_time"
+        calls.
         This means this method can be called frequently called (e.g. whenever
         a new record is created).
+        2012-06-06: _transient_max_count not used/implemented for the moment
         """
-        assert self._transient, "Model %s is not transient, it cannot be vacuumed!" % self._name
+        assert self._transient, (
+            "Model %s is not transient, it cannot be vacuumed!" % self._name)
+        _transient_check_time = 20  # arbitrary limit on vacuum executions
         self._transient_check_count += 1
-        if (not force) and (self._transient_check_count % self._transient_check_time):
-            self._transient_check_count = 0
-            return True
-
-        # Age-based expiration
-        if self._transient_max_hours:
-            self._transient_clean_rows_older_than(cr, self._transient_max_hours * 60 * 60)
-
-        # Count-based expiration
-        if self._transient_max_count:
-            self._transient_clean_old_rows(cr, self._transient_max_count)
-
+        if  ((not force)
+        and (self._transient_check_count % _transient_check_time)):
+            return True  # no vacuum cleaning this time
+        self._transient_check_count = 0
+        '''For the moment we just use age-based expiration. And we will
+        never delete records that have been changed / created in the
+        last 5 minutes. (Arbitrary value, we might make this a configurable
+        option).'''
+        seconds = max(self._transient_max_hours * 60 * 60, 600)
+        now_str = "(now() at time zone 'UTC')"
+        cr.execute(
+            "SELECT id FROM " + self._table + " WHERE"
+            " COALESCE(write_date, create_date, " + now_str + ")::timestamp"
+            "< (" + now_str + " - interval %s)", ("%s seconds" % seconds,))
+        ids = [x[0] for x in cr.fetchall()]
+        if  ids:
+            self.unlink(cr, SUPERUSER_ID, ids)
         return True
 
     def resolve_o2m_commands_to_record_dicts(self, cr, uid, field_name, o2m_commands, fields=None, context=None):
