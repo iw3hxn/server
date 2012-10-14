@@ -1265,7 +1265,13 @@ class BaseModel(object):
                     module, xml_id = id.rsplit('.', 1)
                 else:
                     module, xml_id = current_module, id
-                record_id = ir_model_data_obj._get_id(cr, uid, module, xml_id)
+                try:                  
+                    record_id = ir_model_data_obj._get_id(cr, uid, module, xml_id)
+                except ValueError, e:
+                    id_parts = xml_id.split('_')
+                    if module != '__export__' or model_name != '_'.join(id_parts[:-1]):
+                        raise
+                    return _get_id(model_name, id_parts[-1], mode='.id')
                 ir_model_data = ir_model_data_obj.read(cr, uid, [record_id], ['res_id'])
                 if not ir_model_data:
                     raise ValueError('No references to %s.%s' % (module, xml_id))
