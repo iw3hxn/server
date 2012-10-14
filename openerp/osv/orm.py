@@ -1267,7 +1267,9 @@ class BaseModel(object):
                     record_id = ir_model_data_obj._get_id(cr, uid, module, xml_id)
                 except ValueError, e:
                     id_parts = xml_id.split('_')
-                    if module != '__export__' or model_name != '_'.join(id_parts[:-1]):
+                    obj_model = self.pool.get(model_name)
+                    if not (module == '__export__' and
+                            obj_model._table == '_'.join(id_parts[:-1])):
                         raise
                     return _get_id(model_name, id_parts[-1], mode='.id')
                 ir_model_data = ir_model_data_obj.read(cr, uid, [record_id], ['res_id'])
