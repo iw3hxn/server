@@ -1183,7 +1183,6 @@ class related(function):
             for i in range(len(self.arg) - 1):
                 if not t_data[self.arg[i]]:
                     break
-                t_id = t_data.id
                 if self._relations[i]['type'] in ('one2many', 'many2many'):
                     t_data = t_data[self.arg[i]][0]
                 else:
