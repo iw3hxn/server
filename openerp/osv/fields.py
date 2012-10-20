@@ -1179,25 +1179,17 @@ class related(function):
             ids=[ids]
         objlst = obj.browse(cr, uid, ids)
         for data in objlst:
-            t_id = data.id
             t_data = data
-            for i in range(len(self.arg)):
-                if not t_data: break
-                field_detail = self._relations[i]
+            for i in range(len(self.arg) - 1):
                 if not t_data[self.arg[i]]:
-                    if self._type not in ('one2many', 'many2many'):
-                        t_id = t_data['id']
-                    t_data = False
-                elif field_detail['type'] in ('one2many', 'many2many'):
-                    if self._type != "many2one":
-                        t_id = t_data.id
-                        t_data = t_data[self.arg[i]][0]
-                    else:
-                        t_data = False
+                    break
+                t_id = t_data.id
+                if self._relations[i]['type'] in ('one2many', 'many2many'):
+                    t_data = t_data[self.arg[i]][0]
                 else:
-                    t_id = t_data['id']
                     t_data = t_data[self.arg[i]]
             else:
+                t_id = t_data.id
                 model = obj.pool.get(self._relations[-1]['object'])
                 model.write(cr, uid, [t_id], {args[-1]: values}, context=context)
 
