@@ -22,6 +22,7 @@
 import logging
 import time
 
+from openerp.tools.translate import _
 import openerp
 
 _logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class ir_sequence_type(openerp.osv.osv.osv):
     _sql_constraints = [
         ('code_unique', 'unique(code)', '`code` must be unique.'),
     ]
-
+    
 def _code_get(self, cr, uid, context=None):
     cr.execute('select code, name from ir_sequence_type')
     return cr.fetchall()
@@ -52,6 +53,43 @@ class ir_sequence(openerp.osv.osv.osv):
     """
     _name = 'ir.sequence'
     _order = 'name'
+    
+    def _get_next_number_actual(
+            self, cr, user, ids, field_name, arg, context=None):
+        '''Return number from ir_sequence row when no_gap implementation,
+        and number from postgres sequence when standard implementation.'''
+        res = dict.fromkeys(ids)
+        for seq_id in ids:
+            this_obj = self.browse(cr, user, seq_id, context=context)
+            if  this_obj.implementation != 'standard':
+                res[seq_id] = this_obj.number_next
+            else:
+                # get number from postgres sequence. Cannot use
+                # currval, because that might give an error when
+                # not having used nextval before.
+                statement = (
+                    "SELECT last_value, increment_by, is_called"
+                    " FROM ir_sequence_%03d"
+                    % seq_id)
+                cr.execute(statement)
+                (last_value, increment_by, is_called) = cr.fetchone()
+                if  is_called:
+                    res[seq_id] = last_value + increment_by
+                else:
+                    res[seq_id] = last_value
+        return res
+
+    def _function_false(
+            self, cr, user, ids, field_name, arg, context=None):
+        res = dict.fromkeys(ids)
+        for seq_id in ids:
+            res[seq_id] = False
+        return res       
+    
+    def _dummy_fnct_inv(
+            self, cr, user, ids, field_name, field_value, arg, context):
+        pass
+    
     _columns = {
         'name': openerp.osv.fields.char('Name', size=64, required=True),
         'code': openerp.osv.fields.selection(_code_get, 'Code', size=64),
@@ -64,11 +102,31 @@ class ir_sequence(openerp.osv.osv.osv):
         'active': openerp.osv.fields.boolean('Active'),
         'prefix': openerp.osv.fields.char('Prefix', size=64, help="Prefix value of the record for the sequence"),
         'suffix': openerp.osv.fields.char('Suffix', size=64, help="Suffix value of the record for the sequence"),
-        'number_next': openerp.osv.fields.integer('Next Number', required=True, help="Next number of this sequence"),
+        'number_next': openerp.osv.fields.integer(
+            'Next Number', required=True,
+            help='Next number originally set or reset for this sequence'),
+        'number_next_actual': openerp.osv.fields.function(
+            _get_next_number_actual, type='integer', required=True,
+            string='Actual Next Number',
+            help='Next number that will actually be used.'
+            ' Will be zero for new sequence.'),
+        'number_next_allow_update': openerp.osv.fields.function(
+            _function_false, method= True, fnct_inv=_dummy_fnct_inv,
+            type='boolean', string='Reset next number',
+            help='Allows to enter a new next number'),
+        'number_next_allow_lower': openerp.osv.fields.boolean(
+            'Allow lower value than current',
+            help='Normally next number should only be set to values higher'
+            ' than those actually used. This field allows to override that.'
+            ' The default is to allow it. This is for compatibility with'
+            ' existing code, but also because parts of the code generated'
+            ' can be dynamic (e.g. %year), so setting the next number to a'
+            ' lower value will not always lead to problems'),
         'number_increment': openerp.osv.fields.integer('Increment Number', required=True, help="The next number of the sequence will be incremented by this number"),
         'padding' : openerp.osv.fields.integer('Number Padding', required=True, help="OpenERP will automatically adds some '0' on the left of the 'Next Number' to get the required padding size."),
         'company_id': openerp.osv.fields.many2one('res.company', 'Company'),
     }
+    
     _defaults = {
         'implementation': 'standard',
         'active': True,
@@ -76,6 +134,7 @@ class ir_sequence(openerp.osv.osv.osv):
         'number_increment': 1,
         'number_next': 1,
         'padding' : 0,
+        'number_next_allow_lower': True,
     }
 
     def init(self, cr):
@@ -117,16 +176,18 @@ class ir_sequence(openerp.osv.osv.osv):
         # object depends on it.
         cr.execute("DROP SEQUENCE IF EXISTS %s RESTRICT " % names)
 
-    def _alter_sequence(self, cr, id, number_increment, number_next):
+    def _alter_sequence(self, cr, id, number_increment, number_next=0):
         """ Alter a PostreSQL sequence.
 
         There is no access rights check.
         """
         assert isinstance(id, (int, long))
-        cr.execute("""
-            ALTER SEQUENCE ir_sequence_%03d INCREMENT BY %%s RESTART WITH %%s
-            """ % id, (number_increment, number_next))
-
+        statement = ("ALTER SEQUENCE ir_sequence_%03d INCREMENT BY %d" %
+            (id, number_increment))
+        if  number_next:
+            statement += " RESTART WITH %d" % (number_next, )
+        cr.execute(statement)
+        
     def create(self, cr, uid, values, context=None):
         """ Create a sequence, in implementation == standard a fast gaps-allowed PostgreSQL sequence is used.
         """
@@ -140,10 +201,37 @@ class ir_sequence(openerp.osv.osv.osv):
         super(ir_sequence, self).unlink(cr, uid, ids, context)
         self._drop_sequence(cr, ids)
         return True
+    
+    def _pre_validate(self, cr, uid, ids, values, context=None):
+        '''If next_number changed, check wether change allowed. Change 
+        should be prevented when number_next decreased, unless explicitly
+        requested by user. Raise error when invalid change requested.'''
+        if  not 'number_next' in values:
+            return 
+        nn_new = values['number_next']
+        for this_obj in self.browse(cr, uid, ids, context=context):
+            nn_actual = this_obj.number_next_actual
+            nn_al = this_obj.number_next_allow_lower
+            if  'number_next_allow_lower' in values:
+                nn_al = values['number_next_allow_lower']
+            # No need to validate lower number if explicitly allowed
+            if  not nn_al:
+                rows = self.read(cr, uid, [this_obj.id], ['number_next'])
+                for row in rows:
+                    nn_old = row['number_next']
+                    # Only validate when changed. Unchanged value will not
+                    # lead to an action on the sequence.
+                    if  nn_old != nn_new:
+                        if  nn_actual > nn_new:
+                            raise openerp.osv.orm.except_orm(
+                                _('ValidationError'),
+                                _('New value is not allowed to be lower than actual value'))
+
 
     def write(self, cr, uid, ids, values, context=None):
         if not isinstance(ids, (list, tuple)):
             ids = [ids]
+        self._pre_validate(cr, uid, ids, values, context=context)
         new_implementation = values.get('implementation')
         rows = self.read(cr, uid, ids, ['implementation', 'number_increment', 'number_next'], context)
         super(ir_sequence, self).write(cr, uid, ids, values, context)
@@ -154,7 +242,15 @@ class ir_sequence(openerp.osv.osv.osv):
             n = values.get('number_next', row['number_next'])
             if row['implementation'] == 'standard':
                 if new_implementation in ('standard', None):
-                    self._alter_sequence(cr, row['id'], i, n)
+                    # Implementation has NOT changed.
+                    # Only change sequence if really requested.
+                    if (('number_next' in values)
+                    and (values['number_next'] != row['number_next'])):
+                        self._alter_sequence(cr, row['id'], i, n)
+                    else:
+                        # Just in case only increment changed
+                        if  'number_increment' in values:
+                            self._alter_sequence(cr, row['id'], i)
                 else:
                     self._drop_sequence(cr, row['id'])
             else:
@@ -162,7 +258,6 @@ class ir_sequence(openerp.osv.osv.osv):
                     pass
                 else:
                     self._create_sequence(cr, row['id'], i, n)
-
         return True
 
     def _interpolate(self, s, d):
