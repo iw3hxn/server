@@ -54,7 +54,7 @@ class ir_sequence(openerp.osv.osv.osv):
     _name = 'ir.sequence'
     _order = 'name'
     
-    def _get_next_number_actual(
+    def _get_number_next_actual(
             self, cr, user, ids, field_name, arg, context=None):
         '''Return number from ir_sequence row when no_gap implementation,
         and number from postgres sequence when standard implementation.'''
@@ -78,17 +78,6 @@ class ir_sequence(openerp.osv.osv.osv):
                 else:
                     res[seq_id] = last_value
         return res
-
-    def _function_false(
-            self, cr, user, ids, field_name, arg, context=None):
-        res = dict.fromkeys(ids)
-        for seq_id in ids:
-            res[seq_id] = False
-        return res       
-    
-    def _dummy_fnct_inv(
-            self, cr, user, ids, field_name, field_value, arg, context):
-        pass
     
     _columns = {
         'name': openerp.osv.fields.char('Name', size=64, required=True),
@@ -106,22 +95,22 @@ class ir_sequence(openerp.osv.osv.osv):
             'Next Number', required=True,
             help='Next number originally set or reset for this sequence'),
         'number_next_actual': openerp.osv.fields.function(
-            _get_next_number_actual, type='integer', required=True,
+            _get_number_next_actual, type='integer', required=True,
             string='Actual Next Number',
             help='Next number that will actually be used.'
             ' Will be zero for new sequence.'),
-        'number_next_allow_update': openerp.osv.fields.function(
-            _function_false, method= True, fnct_inv=_dummy_fnct_inv,
-            type='boolean', string='Reset next number',
-            help='Allows to enter a new next number'),
-        'number_next_allow_lower': openerp.osv.fields.boolean(
-            'Allow lower value than current',
-            help='Normally next number should only be set to values higher'
-            ' than those actually used. This field allows to override that.'
-            ' The default is to allow it. This is for compatibility with'
-            ' existing code, but also because parts of the code generated'
-            ' can be dynamic (e.g. %year), so setting the next number to a'
-            ' lower value will not always lead to problems'),
+        'prohibit_number_next_change': openerp.osv.fields.boolean(
+            'Prohibit change of Next Number',
+            help='Changing next number can wreak havoc on sequences.'
+            ' Checking this option will prevent accidental changes.'),
+        'prohibit_number_next_lower': openerp.osv.fields.boolean(
+            'Prohibit lower value for Next Number',
+            help='When manually setting Next Number to a value lower than the'
+            ' the current value, there is a big risk for duplicate key errors'
+            ' when trying to add new sequences generated to the database.'
+            ' This is especially the case when your prefix or suffix is not'
+            ' changed at the same time, or has no dynamic part (formula) that'
+            ' will also change.'),
         'number_increment': openerp.osv.fields.integer('Increment Number', required=True, help="The next number of the sequence will be incremented by this number"),
         'padding' : openerp.osv.fields.integer('Number Padding', required=True, help="OpenERP will automatically adds some '0' on the left of the 'Next Number' to get the required padding size."),
         'company_id': openerp.osv.fields.many2one('res.company', 'Company'),
@@ -134,7 +123,8 @@ class ir_sequence(openerp.osv.osv.osv):
         'number_increment': 1,
         'number_next': 1,
         'padding' : 0,
-        'number_next_allow_lower': True,
+        'prohibit_number_next_change': False,
+        'prohibit_number_next_lower': False,
     }
 
     def init(self, cr):
@@ -203,30 +193,30 @@ class ir_sequence(openerp.osv.osv.osv):
         return True
     
     def _pre_validate(self, cr, uid, ids, values, context=None):
-        '''If next_number changed, check wether change allowed. Change 
-        should be prevented when number_next decreased, unless explicitly
-        requested by user. Raise error when invalid change requested.'''
+        '''If number_next changed, check wether change allowed.
+If number is lower than actual next number, check wether this is allowed.
+Raise error when invalid change requested.'''
         if  not 'number_next' in values:
             return 
         nn_new = values['number_next']
         for this_obj in self.browse(cr, uid, ids, context=context):
-            nn_actual = this_obj.number_next_actual
-            nn_al = this_obj.number_next_allow_lower
-            if  'number_next_allow_lower' in values:
-                nn_al = values['number_next_allow_lower']
-            # No need to validate lower number if explicitly allowed
-            if  not nn_al:
-                rows = self.read(cr, uid, [this_obj.id], ['number_next'])
-                for row in rows:
-                    nn_old = row['number_next']
-                    # Only validate when changed. Unchanged value will not
-                    # lead to an action on the sequence.
-                    if  nn_old != nn_new:
-                        if  nn_actual > nn_new:
-                            raise openerp.osv.orm.except_orm(
-                                _('ValidationError'),
-                                _('New value is not allowed to be lower than actual value'))
-
+            # Only validate when changed.
+            if this_obj.number_next != nn_new:
+                prohibit_change = values.get(
+                    'prohibit_number_next_change',
+                    this_obj.prohibit_number_next_change)
+                if  prohibit_change:
+                    raise openerp.osv.orm.except_orm(
+                        _('ValidationError'),
+                        _('Chance of Next Number has been prohibited'))
+                prohibit_lower = values.get(
+                    'prohibit_number_next_lower',
+                    this_obj.prohibit_number_next_lower)
+                if  prohibit_lower and (this_obj.number_next_actual > nn_new):
+                    raise openerp.osv.orm.except_orm(
+                        _('ValidationError'),
+                        _('Setting Next Number to a value lower than the'
+                        ' actual value has been prohibited'))
 
     def write(self, cr, uid, ids, values, context=None):
         if not isinstance(ids, (list, tuple)):
