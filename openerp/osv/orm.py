@@ -4208,7 +4208,7 @@ class BaseModel(object):
                     if not pleft_old:
                         cr.execute('select parent_left from '+self._table+' where id=%s', (parent,))
                         pleft_old = cr.fetchone()[0]
-                    pleft = pleft_old
+                    pleft = pleft_old or 0  ## In case no left parent found
                 else:
                     cr.execute('select max(parent_right) from '+self._table)
                     pleft = cr.fetchone()[0] or 0
