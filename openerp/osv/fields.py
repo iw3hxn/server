@@ -484,7 +484,7 @@ class many2one(_column):
         # we use uid=1 because the visibility of a many2one field value (just id and name)
         # must be the access right of the parent form and not the linked object itself.
         records = dict(obj.name_get(cr, 1,
-                                    list(set([x for x in res.values() if isinstance(x, (int,long))])),
+                                    list(set([x for x in res.values() if isinstance(x, (int,long)) and not isinstance(x, bool)])),
                                     context=context))
         for id in res:
             if res[id] in records:
