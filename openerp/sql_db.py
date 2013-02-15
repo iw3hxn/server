@@ -170,25 +170,15 @@ class Cursor(object):
         # see also the docstring of Cursor.  
         self._serialized = serialized
 
+        self._cnx = pool.borrow(dsn(dbname))
+        self._obj = self._cnx.cursor(cursor_factory=psycopg1cursor)
         if self.sql_log:
             self.__caller = frame_codeinfo(currentframe(),2)
         else:
             self.__caller = False
+        self.__closed = False   # real initialisation value
+        self.autocommit(False)
         self.__closer = False
-        # Ensure connection if the DB server has restarted
-        for idx in xrange(pool._maxconn):
-            self._cnx = pool.borrow(dsn(dbname))
-            self._obj = self._cnx.cursor(cursor_factory=psycopg1cursor)
-            self.__closed = False   # real initialisation value
-            try:
-                self.autocommit(False)
-            except psycopg2.OperationalError:
-                self.__closed = True
-                if not self._cnx.closed:
-                    raise
-                # The closed connection will be discarded from the pool
-            else:
-                break
 
         self._default_log_exceptions = True
 
