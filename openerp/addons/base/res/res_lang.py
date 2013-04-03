@@ -151,7 +151,7 @@ class lang(osv.osv):
         'direction': lambda *a: 'ltr',
         'date_format':_get_default_date_format,
         'time_format':_get_default_time_format,
-        'grouping':lambda *a: '[3,3,3,3,3]',
+        'grouping':lambda *a: '[3,0]',
         'decimal_point':lambda *a: '.',
         'thousands_sep':lambda *a: ',',
     }
