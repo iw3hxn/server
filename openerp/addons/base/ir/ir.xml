@@ -151,7 +151,17 @@
                         <field name="suffix"/>
                         <field name="padding"/>
                         <field name="number_increment"/>
-                        <field name="number_next"/>
+                            <!-- If number_next_actual is 0, we have a brand new record -->
+                            <field
+                                name="prohibit_number_next_change"
+                                attrs="{'invisible':[('number_next_actual','=',0)]}" />
+                            <field name="prohibit_number_next_lower"
+                                attrs="{'invisible':[('number_next_actual','=',0)]}" />
+                            <field name="number_next_actual"
+                                attrs="{'invisible':[('number_next_actual','=',0)]}" /> 
+                            <field 
+                                name="number_next"
+                                attrs="{'readonly':[('prohibit_number_next_change','=',True),('number_next_actual','&gt;',0)]}" />
                         <field name="implementation"/>
                         <separator colspan="4" string="Legend (for prefix, suffix)"/>
                         <group col="8" colspan="4">
