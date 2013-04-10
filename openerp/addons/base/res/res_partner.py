@@ -279,7 +279,8 @@ class res_partner(osv.osv):
     def view_header_get(self, cr, uid, view_id, view_type, context):
         res = super(res_partner, self).view_header_get(cr, uid, view_id, view_type, context)
         if res: return res
-        if (not context.get('category_id', False)):
+        if (not context.get('category_id') or not
+                isinstance(context['category_id'], (int, long))):
             return False
         return _('Partners: ')+self.pool.get('res.partner.category').browse(cr, uid, context['category_id'], context).name
     def main_partner(self, cr, uid):
