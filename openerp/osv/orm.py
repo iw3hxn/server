@@ -4988,7 +4988,7 @@ class BaseModel(object):
             record_dicts.append(item)
         return record_dicts
     
-    def _register_hook(self, cr):
+    def _register_hook(self, cr, uid, ids=None):
         """ stuff to do right after the registry is built """
         pass    
     
