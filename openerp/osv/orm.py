@@ -4987,7 +4987,11 @@ class BaseModel(object):
             if command in (0, 1): item.update(record)
             record_dicts.append(item)
         return record_dicts
-
+    
+    def _register_hook(self, cr, uid, ids=None):
+        """ stuff to do right after the registry is built """
+        pass    
+    
 # keep this import here, at top it will cause dependency cycle errors
 import expression
 

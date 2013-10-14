@@ -51,6 +51,7 @@ import openerp.release as release
 import openerp.tools as tools
 import openerp.tools.osutil as osutil
 
+from openerp import SUPERUSER_ID
 from openerp.tools.safe_eval import safe_eval as eval
 from openerp.tools.translate import _
 from openerp.modules.module import \
@@ -415,6 +416,11 @@ def load_modules(db, force_demo=False, status=None, update_module=False):
             cr.commit()
 
         _logger.info('Modules loaded.')
+        
+        # STEP 7: call _register_hook on every model
+        for model in pool.models.values():
+            model._register_hook(cr, SUPERUSER_ID, [])    
+                
     finally:
         cr.close()
 
