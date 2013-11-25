@@ -75,8 +75,20 @@ def xmlrpc_return(start_response, service, method, params, legacy_exceptions=Fal
     # RPC_FAULT_CODE_APPLICATION_ERROR value.
     # This also mimics SimpleXMLRPCDispatcher._marshaled_dispatch() for
     # exception handling.
+        
     try:
-        result = openerp.netsvc.dispatch_rpc(service, method, params)
+        def fix(res):
+            """
+            This fix is a hook to avoid xmlrpclib to raise this kind of exception  
+            xmlrpclib.Fault: <Fault 1: "<type 'exceptions.TypeError'>:dictionary key must be string">
+            To respect the XML-RPC protocol, all "int" and "float" keys must be cast to string
+            """
+            if type(res) == dict:
+                return dict((str(key), fix(value)) for key, value in res.items())
+            else:
+                return res
+            
+        result = fix(openerp.netsvc.dispatch_rpc(service, method, params))
         response = xmlrpclib.dumps((result,), methodresponse=1, allow_none=False, encoding=None)
     except Exception, e:
         if legacy_exceptions:
