@@ -62,7 +62,7 @@ class res_partner_bank_type(osv.osv):
         'name': fields.char('Name', size=64, required=True, translate=True),
         'code': fields.char('Code', size=64, required=True),
         'field_ids': fields.one2many('res.partner.bank.type.field', 'bank_type_id', 'Type fields'),
-        'format_layout': fields.text('Format Layout', translate=True)
+        'format_layout': fields.text('Format Layout', translate=False)
     }
     _defaults = {
         'format_layout': lambda *args: "%(bank_name)s: %(acc_number)s"
