@@ -637,11 +637,18 @@ class expression(object):
                              '    FROM "' + working_table._table + '"'       \
                              '   WHERE "' + left + '" ' + sql_operator + ' ' +" (" + instr + "))"
                     else:
-                        subselect += '     AND value ' + sql_operator + instr +   \
-                             ') UNION ('                \
-                             '  SELECT id'              \
-                             '    FROM "' + working_table._table + '"'       \
-                             '   WHERE "' + left + '" ' + sql_operator + instr + ")"
+                        if self.has_unaccent and sql_operator in ('ilike', 'not ilike'):
+                            subselect += '     AND unaccent(value) ' + sql_operator + ' unaccent(' + instr +   \
+                                 ')) UNION ('                \
+                                 '  SELECT id'              \
+                                 '    FROM "' + working_table._table + '"'       \
+                                 '   WHERE unaccent("' + left + '") ' + sql_operator + ' unaccent(' + instr + '))'
+                        else:
+                            subselect += '     AND value ' + sql_operator + instr +   \
+                                 ') UNION ('                \
+                                 '  SELECT id'              \
+                                 '    FROM "' + working_table._table + '"'       \
+                                 '   WHERE "' + left + '" ' + sql_operator + instr + ")"
 
                     params = [working_table._name + ',' + left,
                               context.get('lang', False) or 'en_US',
