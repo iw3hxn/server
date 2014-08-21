@@ -101,7 +101,7 @@ class db(netsvc.ExportService):
 
     def dispatch(self, method, params):
         if method in [ 'create', 'get_progress', 'drop', 'dump',
-            'restore', 'rename',
+            'restore', 'rename', 'duplicate_database',
             'change_admin_password', 'migrate_databases',
             'create_database' ]:
             passwd = params[0]
@@ -125,6 +125,18 @@ class db(netsvc.ExportService):
             cr.execute("""CREATE DATABASE "%s" ENCODING 'unicode' TEMPLATE "%s" """ % (name, chosen_template))
         finally:
             cr.close()
+
+    def exp_duplicate_database(self, db_original_name, db_name):
+        _logger.info('Duplicate database `%s` to `%s`.', db_original_name, db_name)
+        sql_db.close_db(db_original_name)
+        db = sql_db.db_connect('postgres')
+        cr = db.cursor()
+        try:
+            cr.autocommit(True) # avoid transaction block
+            cr.execute("""CREATE DATABASE "%s" ENCODING 'unicode' TEMPLATE "%s" """ % (db_name, db_original_name))
+        finally:
+            cr.close()
+        return True
 
     def exp_create(self, db_name, demo, lang, user_password='admin'):
         self.id_protect.acquire()
