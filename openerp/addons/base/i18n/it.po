@@ -2515,7 +2515,7 @@ msgstr "São Tomé e Príncipe"
 #. module: base
 #: selection:res.partner,type:0
 msgid "Invoice"
-msgstr "Fattura"
+msgstr "Sede Amministrativa"
 
 #. module: base
 #: selection:base.language.install,lang:0
@@ -11729,7 +11729,7 @@ msgstr "Chiave '%s' non trovata nel campo selezione '%s'"
 #: selection:ir.values,key:0
 #: selection:res.partner,type:0
 msgid "Default"
-msgstr "Predefinito"
+msgstr "Sede Legale"
 
 #. module: base
 #: view:partner.wizard.ean.check:0
