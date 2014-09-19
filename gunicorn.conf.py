@@ -12,6 +12,7 @@
 #   $ gunicorn openerp:wsgi.proxied.application -c gunicorn.conf.py
 
 import openerp
+import multiprocessing
 
 # Standard OpenERP XML-RPC port is 8069
 bind = '127.0.0.1:8069'
@@ -21,7 +22,7 @@ pidfile = '.gunicorn.pid'
 # Gunicorn recommends 2-4 x number_of_cpu_cores, but
 # you'll want to vary this a bit to find the best for your
 # particular work load.
-workers = 4
+workers = multiprocessing.cpu_count() * 2 + 1
 
 # Some application-wide initialization is needed.
 on_starting = openerp.wsgi.core.on_starting
