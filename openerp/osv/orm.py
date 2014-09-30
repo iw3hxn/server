@@ -1726,23 +1726,13 @@ class BaseModel(object):
                     trans = self.pool.get('ir.translation')._get_source(cr, user, context['base_model_name'], 'view', context['lang'], node.get('string'))
                 if trans:
                     node.set('string', trans)
-            if node.get('confirm'):
-                trans = self.pool.get('ir.translation')._get_source(cr, user, self._name, 'view', context['lang'], node.get('confirm'))
-                if trans:
-                    node.set('confirm', trans)
-            if node.get('sum'):
-                trans = self.pool.get('ir.translation')._get_source(cr, user, self._name, 'view', context['lang'], node.get('sum'))
-                if trans:
-                    node.set('sum', trans)
-            if node.get('avg'):
-                trans = self.pool.get('ir.translation')._get_source(cr, user, self._name, 'view', context['lang'], node.get('avg'))
-                if trans:
-                    node.set('avg', trans)
-            if node.get('help'):
-                trans = self.pool.get('ir.translation')._get_source(cr, user, self._name, 'view', context['lang'], node.get('help'))
-                if trans:
-                    node.set('help', trans)
 
+            for attr_name in ('confirm', 'sum', 'avg', 'help', 'placeholder'):
+                attr_value = node.get(attr_name)
+                if attr_value:
+                    trans = self.pool.get('ir.translation')._get_source(cr, user, self._name, 'view', context['lang'], attr_value)
+                    if trans:
+                        node.set(attr_name, trans)
         for f in node:
             if children or (node.tag == 'field' and f.tag in ('filter','separator')):
                 fields.update(self.__view_look_dom(cr, user, f, view_id, in_tree_view, model_fields, context))

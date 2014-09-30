@@ -546,6 +546,8 @@ def trans_parse_view(de):
         res.append(de.get('sum').encode("utf8"))
     if de.get("confirm"):
         res.append(de.get('confirm').encode("utf8"))
+    if de.get("placeholder"):
+        res.append(de.get('placeholder').encode("utf8"))
     for n in de:
         res.extend(trans_parse_view(n))
     return res
@@ -563,6 +565,46 @@ def in_modules(object_name, modules):
     module = object_name.split('.')[0]
     module = module_dict.get(module, module)
     return module in modules
+
+
+def babel_extract_qweb(fileobj, keywords, comment_tags, options):
+    """Babel message extractor for qweb template files.
+    :param fileobj: the file-like object the messages should be extracted from
+    :param keywords: a list of keywords (i.e. function names) that should
+                     be recognized as translation functions
+    :param comment_tags: a list of translator tags to search for and
+                         include in the results
+    :param options: a dictionary of additional options (optional)
+    :return: an iterator over ``(lineno, funcname, message, comments)``
+             tuples
+    :rtype: ``iterator``
+    """
+    result = []
+    def handle_text(text, lineno):
+        text = (text or "").strip()
+        if len(text) > 1: # Avoid mono-char tokens like ':' ',' etc.
+            result.append((lineno, None, text, []))
+
+    # not using elementTree.iterparse because we need to skip sub-trees in case
+    # the ancestor element had a reason to be skipped
+    def iter_elements(current_element):
+        for el in current_element:
+            if isinstance(el, SKIPPED_ELEMENT_TYPES): continue
+            if "t-js" not in el.attrib and \
+                    not ("t-jquery" in el.attrib and "t-operation" not in el.attrib) and \
+                    not ("t-translation" in el.attrib and el.attrib["t-translation"].strip() == "off"):
+                handle_text(el.text, el.sourceline)
+                for att in ('title', 'alt', 'label', 'placeholder'):
+                    if att in el.attrib:
+                        handle_text(el.attrib[att], el.sourceline)
+                iter_elements(el)
+            handle_text(el.tail, el.sourceline)
+
+    tree = etree.parse(fileobj)
+    iter_elements(tree.getroot())
+
+    return result
+
 
 def trans_generate(lang, modules, cr):
     dbname = cr.dbname
@@ -857,10 +899,22 @@ def trans_generate(lang, modules, cr):
     for path in path_list:
         _logger.debug("Scanning files of modules at %s", path)
         for root, dummy, files in osutil.walksymlinks(path):
-            for fname in itertools.chain(fnmatch.filter(files, '*.py')):
-                export_code_terms_from_file(fname, path, root, 'code')
-            for fname in itertools.chain(fnmatch.filter(files, '*.mako')):
-                export_code_terms_from_file(fname, path, root, 'report')
+            for fname in fnmatch.filter(files, '*.py'):
+                babel_extract_terms(fname, path, root)
+            # mako provides a babel extractor: http://docs.makotemplates.org/en/latest/usage.html#babel
+            for fname in fnmatch.filter(files, '*.mako'):
+                babel_extract_terms(fname, path, root, 'mako', trans_type='report')
+            # Javascript source files in the static/src/js directory, rest is ignored (libs)
+            if fnmatch.fnmatch(root, '*/static/src/js*'):
+                for fname in fnmatch.filter(files, '*.js'):
+                    babel_extract_terms(fname, path, root, 'javascript',
+                                        extra_comments=[WEB_TRANSLATION_COMMENT],
+                                        extract_keywords={'_t': None, '_lt': None})
+            # QWeb template files
+            if fnmatch.fnmatch(root, '*/static/src/xml*'):
+                for fname in fnmatch.filter(files, '*.xml'):
+                    babel_extract_terms(fname, path, root, 'openerp.tools.translate:babel_extract_qweb',
+                                        extra_comments=[WEB_TRANSLATION_COMMENT])
 
 
     out = [["module","type","name","res_id","src","value"]] # header
