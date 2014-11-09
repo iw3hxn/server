@@ -25,6 +25,12 @@ msgid "Saint Helena"
 msgstr "Sant'Elena"
 
 #. module: base
+#: model:ir.actions.act_window,name:base.action_partner_address_form
+#: model:ir.ui.menu,name:base.menu_partner_address_form
+msgid "Addresses"
+msgstr "Indirizzi"
+
+#. module: base
 #: view:ir.actions.report.xml:0
 msgid "Other Configuration"
 msgstr "Altre Configurazioni"
