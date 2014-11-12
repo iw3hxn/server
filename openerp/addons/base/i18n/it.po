@@ -348,7 +348,7 @@ msgstr "Reportistica"
 #. module: base
 #: field:res.partner.address,name:0
 msgid "Contact Name"
-msgstr "Nome Contatto"
+msgstr "Settore / Ufficio"
 
 #. module: base
 #: code:addons/base/module/wizard/base_export_language.py:56
