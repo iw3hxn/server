@@ -15537,7 +15537,7 @@ msgstr ""
 #. module: base
 #: selection:res.partner.address,type:0
 msgid "Delivery"
-msgstr "Consegna"
+msgstr "Sede Operativa"
 
 #. module: base
 #: model:res.partner.title,name:base.res_partner_title_pvt_ltd
@@ -15596,7 +15596,7 @@ msgstr "Gestione vendite e MRP"
 #. module: base
 #: model:ir.actions.act_window,name:base.action_partner_sms_send
 msgid "Send an SMS"
-msgstr ""
+msgstr "Manda un SMS"
 
 #. module: base
 #: model:res.partner.category,name:base.res_partner_category_2
