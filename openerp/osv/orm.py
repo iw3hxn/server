@@ -370,25 +370,37 @@ class browse_record(object):
                 else:
                     return attr
             else:
-                error_msg = "Field '%s' does not exist in object '%s'" % (name, self) 
+                error_msg = "Field '%s' does not exist in object '%s'" % (name, self)
                 self.__logger.warning(error_msg)
+                if self.__logger.isEnabledFor(logging.DEBUG):
+                    self.__logger.debug(''.join(traceback.format_stack()))
                 raise KeyError(error_msg)
 
             # if the field is a classic one or a many2one, we'll fetch all classic and many2one fields
             if col._prefetch:
                 # gen the list of "local" (ie not inherited) fields which are classic or many2one
-                fields_to_fetch = filter(lambda x: x[1]._classic_write and x[1]._prefetch, self._table._columns.items())
+                field_filter = lambda x: x[1]._classic_write and x[1]._prefetch
+                fields_to_fetch = filter(field_filter, self._table._columns.items())
                 # gen the list of inherited fields
                 inherits = map(lambda x: (x[0], x[1][2]), self._table._inherit_fields.items())
                 # complete the field list with the inherited fields which are classic or many2one
-                fields_to_fetch += filter(lambda x: x[1]._classic_write and x[1]._prefetch, inherits)
+                fields_to_fetch += filter(field_filter, inherits)
             # otherwise we fetch only that field
             else:
                 fields_to_fetch = [(name, col)]
+
             ids = filter(lambda id: name not in self._data[id], self._data.keys())
             # read the results
             field_names = map(lambda x: x[0], fields_to_fetch)
-            field_values = self._table.read(self._cr, self._uid, ids, field_names, context=self._context, load="_classic_write")
+            try:
+                field_values = self._table.read(self._cr, self._uid, ids, field_names, context=self._context, load="_classic_write")
+            except (openerp.exceptions.AccessError, except_orm):
+                if len(ids) == 1:
+                    raise
+                # prefetching attempt failed, perhaps we're violating ACL restrictions involuntarily
+                _logger.info('Prefetching attempt for fields %s on %s failed for ids %s, re-trying just for id %s', field_names, self._model._name, ids, self._id)
+                ids = [self._id]
+                field_values = self._table.read(self._cr, self._uid, ids, field_names, context=self._context, load="_classic_write")
 
             # TODO: improve this, very slow for reports
             if self._fields_process:
@@ -413,7 +425,7 @@ class browse_record(object):
             for result_line in field_values:
                 new_data = {}
                 for field_name, field_column in fields_to_fetch:
-                    if field_column._type in ('many2one', 'one2one'):
+                    if field_column._type == 'many2one':
                         if result_line[field_name]:
                             obj = self._table.pool.get(field_column._obj)
                             if isinstance(result_line[field_name], (list, tuple)):
@@ -445,8 +457,13 @@ class browse_record(object):
                         else:
                             new_data[field_name] = browse_null()
                     elif field_column._type in ('one2many', 'many2many') and len(result_line[field_name]):
-                        new_data[field_name] = self._list_class([browse_record(self._cr, self._uid, id, self._table.pool.get(field_column._obj), self._cache, context=self._context, list_class=self._list_class, fields_process=self._fields_process) for id in result_line[field_name]], self._context)
-                    elif field_column._type in ('reference'):
+                        new_data[field_name] = self._list_class(
+                            (browse_record(self._cr, self._uid, id, self._table.pool.get(field_column._obj),
+                                           self._cache, context=self._context, list_class=self._list_class,
+                                           fields_process=self._fields_process)
+                               for id in result_line[field_name]),
+                            context=self._context)
+                    elif field_column._type == 'reference':
                         if result_line[field_name]:
                             if isinstance(result_line[field_name], browse_record):
                                 new_data[field_name] = result_line[field_name]
@@ -673,7 +690,7 @@ class BaseModel(object):
     _group_by_full = {}
 
     # Transience
-    _transient = False  # True in a TransientModel
+    _transient = False # True in a TransientModel
 
     # structure:
     #  { 'parent_model': 'm2o_field', ... }
