@@ -429,6 +429,7 @@ class module(osv.osv):
                     to_install.extend(ids2)
 
         self.button_install(cr, uid, to_install, context=context)
+        self.update_translations(cr, uid, ids)
         return dict(ACTION_DICT, name=_('Upgrade'))
 
     def button_upgrade_cancel(self, cr, uid, ids, context=None):
@@ -591,8 +592,8 @@ class module(osv.osv):
                 iso_lang = tools.get_iso_codes(lang)
                 f = addons.get_module_resource(mod.name, 'i18n', iso_lang + '.po')
                 context2 = context and context.copy() or {}
-                if f and '_' in iso_lang:
-                    iso_lang2 = iso_lang.split('_')[0]
+                if f and '_' in lang:
+                    iso_lang2 = lang.split('_')[0]
                     f2 = addons.get_module_resource(mod.name, 'i18n', iso_lang2 + '.po')
                     if f2:
                         _logger.info('module %s: loading base translation file %s for language %s', mod.name, iso_lang2, lang)
