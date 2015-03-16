@@ -23,6 +23,7 @@ import itertools
 
 from osv import fields,osv
 from osv.orm import except_orm
+from openerp.tools.translate import _
 import tools
 
 class ir_attachment(osv.osv):
@@ -34,12 +35,14 @@ class ir_attachment(osv.osv):
         if not ids:
             return
         res_ids = {}
+        require_employee = False
         if ids:
             if isinstance(ids, (int, long)):
                 ids = [ids]
             cr.execute('SELECT DISTINCT res_model, res_id FROM ir_attachment WHERE id = ANY (%s)', (ids,))
             for rmod, rid in cr.fetchall():
                 if not (rmod and rid):
+                    require_employee = True
                     continue
                 res_ids.setdefault(rmod,set()).add(rid)
         if values:
@@ -50,9 +53,19 @@ class ir_attachment(osv.osv):
         for model, mids in res_ids.items():
             # ignore attachments that are not attached to a resource anymore when checking access rights
             # (resource was deleted but attachment was not)
-            mids = self.pool.get(model).exists(cr, uid, mids)
+            # mids = self.pool.get(model).exists(cr, uid, mids)
+            if not self.pool.get(model):
+                require_employee = True
+                continue
+            existing_ids = self.pool.get(model).exists(cr, uid, mids)
+            if len(existing_ids) != len(mids):
+                require_employee = True
             ima.check(cr, uid, model, mode)
-            self.pool.get(model).check_access_rule(cr, uid, mids, mode, context=context)
+            #self.pool.get(model).check_access_rule(cr, uid, mids, mode, context=context)
+            self.pool.get(model).check_access_rule(cr, uid, existing_ids, mode, context=context)
+        if require_employee:
+            if not self.pool['ir.model.access'].check_groups(cr, uid, 'base.group_user'):
+                raise except_orm(_('Access Denied'), _("Sorry, you are not allowed to access this document."))
 
     def _search(self, cr, uid, args, offset=0, limit=None, order=None, context=None, count=False, access_rights_uid=None):
         ids = super(ir_attachment, self)._search(cr, uid, args, offset=offset,
@@ -87,6 +100,8 @@ class ir_attachment(osv.osv):
         # performed in batch as much as possible.
         ima = self.pool.get('ir.model.access')
         for model, targets in model_attachments.iteritems():
+            if not self.pool.get(model):
+                continue
             if not ima.check(cr, uid, model, 'read', False):
                 # remove all corresponding attachment ids
                 for attach_id in itertools.chain(*targets.values()):

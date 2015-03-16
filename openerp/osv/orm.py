@@ -2789,8 +2789,10 @@ class BaseModel(object):
                     _schema.debug("Table '%s': dropping obsolete FK constraint: '%s'",
                                   source_table, cons['constraint_name'])
                     self._drop_constraint(cr, source_table, cons['constraint_name'])
-                    self._m2o_add_foreign_key_checked(source_field, dest_model, ondelete)
+                    #self._m2o_add_foreign_key_checked(source_field, dest_model, ondelete)
                 # else it's all good, nothing to do!
+                else:
+                    return
             else:
                 # Multiple FKs found for the same field, drop them all, and re-create
                 for cons in constraints:
@@ -2798,7 +2800,8 @@ class BaseModel(object):
                                   source_table, cons['constraint_name'])
                     self._drop_constraint(cr, source_table, cons['constraint_name'])
                 self._m2o_add_foreign_key_checked(source_field, dest_model, ondelete)
-
+        # (re-)create the FK
+        self._m2o_add_foreign_key_checked(source_field, dest_model, ondelete)
 
 
     def _auto_init(self, cr, context=None):
@@ -3950,7 +3953,10 @@ class BaseModel(object):
                         if not src_trans:
                             src_trans = vals[f]
                             # Inserting value to DB
-                            self.write(cr, user, ids, {f: vals[f]})
+                            # OCB at revision 4329
+                            context_wo_lang = dict(context, lang=None)
+                            self.write(cr, user, ids, {f: vals[f]}, context=context_wo_lang)
+                            #self.write(cr, user, ids, {f: vals[f]})
                         self.pool.get('ir.translation')._set_ids(cr, user, self._name+','+f, 'model', context['lang'], ids, vals[f], src_trans)
 
 

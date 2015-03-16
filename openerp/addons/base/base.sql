@@ -348,9 +348,10 @@ CREATE TABLE ir_model_data (
 );
 
 ---------------------------------
--- Users
+-- Company and Users
 ---------------------------------
-
+insert into res_company (id,name) values (1,'Your Company');
+insert into ir_model_data (name,module,model,noupdate,res_id) values ('main_company','base','res.company',True,1);
 insert into res_users (id,login,password,name,active,company_id,context_lang) values (1,'admin','admin','Administrator',True,1,'en_US');
 insert into ir_model_data (name,module,model,noupdate,res_id) values ('user_root','base','res.users',True,1);
 
