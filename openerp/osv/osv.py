@@ -40,7 +40,7 @@ import random
 _logger = logging.getLogger(__name__)
 
 PG_CONCURRENCY_ERRORS_TO_RETRY = (errorcodes.LOCK_NOT_AVAILABLE, errorcodes.SERIALIZATION_FAILURE, errorcodes.DEADLOCK_DETECTED)
-MAX_TRIES_ON_CONCURRENCY_FAILURE = 5
+MAX_TRIES_ON_CONCURRENCY_FAILURE = 10
 
 # Deprecated.
 class except_osv(Exception):
