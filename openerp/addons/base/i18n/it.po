@@ -101,6 +101,11 @@ msgid "Code (eg:en__US)"
 msgstr "Codice (Es: it_IT)"
 
 #. module: base
+#: model:ir.actions.act_window,help:base.open_module_tree
+msgid "You can install new modules in order to activate new features, menu, reports or data in your OpenERP instance. To install some modules, click on the button \"Install\" from the form view and then click on \"Start Upgrade\"."
+msgstr "Puoi installare nuovi moduli in modo da attivare nuove funzionalità, report o dati nella tua installazione SimplERP. Per installare i moduli clicca sul pulsante \"Install\" dalla scheda an poi premi \"Inizia Aggiornamento\" "
+
+#. module: base
 #: view:workflow:0
 #: view:workflow.activity:0
 #: field:workflow.activity,wkf_id:0
