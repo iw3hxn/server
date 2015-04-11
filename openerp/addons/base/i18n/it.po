@@ -103,7 +103,7 @@ msgstr "Codice (Es: it_IT)"
 #. module: base
 #: model:ir.actions.act_window,help:base.open_module_tree
 msgid "You can install new modules in order to activate new features, menu, reports or data in your OpenERP instance. To install some modules, click on the button \"Install\" from the form view and then click on \"Start Upgrade\"."
-msgstr "Puoi installare nuovi moduli in modo da attivare nuove funzionalità, report o dati nella tua installazione SimplERP. Per installare i moduli clicca sul pulsante \"Install\" dalla scheda an poi premi \"Inizia Aggiornamento\" "
+msgstr "Puoi installare nuovi moduli in modo da attivare nuove funzionalità, report o dati nella tua installazione LibrERP. Per installare i moduli clicca sul pulsante \"Install\" dalla scheda an poi premi \"Inizia Aggiornamento\" "
 
 #. module: base
 #: view:workflow:0
@@ -588,7 +588,7 @@ msgid ""
 "created by OpenERP (updates, module installation, ...)"
 msgstr ""
 "Non puoi rimuovere l'utente admin, poichè viene utilizzato internamente per "
-"risorse create da SimplERP (aggiornamenti, installazioni...)"
+"risorse create da LibrERP (aggiornamenti, installazioni...)"
 
 #. module: base
 #: view:ir.values:0
@@ -851,7 +851,7 @@ msgid ""
 "Launchpad.net, our open source project management facility. We use their "
 "online interface to synchronize all translations efforts."
 msgstr ""
-"Le traduzioni di SimplERP sono gestite tramite Launchpad.net, la nostra "
+"Le traduzioni di LibrERP sono gestite tramite Launchpad.net, la nostra "
 "struttura di gestione open source del progetto. Utilizziamo la sua "
 "interfaccia online per sincronizzare tutti i contributi di traduzione."
 
@@ -1525,8 +1525,8 @@ msgid ""
 "issues directly to OpenERP."
 msgstr ""
 "Questo wizard aiuterà a registrare un contratto di garanzia dell'editore nel "
-"sistema SimplERP. Dopo che il contratto sarà registrato, sarà possibile "
-"inviare le problematiche direttamente a SimplERP"
+"sistema LibrERP. Dopo che il contratto sarà registrato, sarà possibile "
+"inviare le problematiche direttamente a LibrERP"
 
 #. module: base
 #: view:wizard.ir.model.menu.create:0
@@ -2023,7 +2023,7 @@ msgid ""
 msgstr ""
 "\n"
 "Questo il modulo base per gestire il piano dei conti per l'Ecuador in "
-"SimplERP.\n"
+"LibrERP.\n"
 "============================================================================="
 "=\n"
 "Piano dei conti e localizzazione per l'Ecuador.\n"
@@ -4748,7 +4748,7 @@ msgstr "Direzione"
 #: view:res.groups:0
 #: field:res.groups,view_access:0
 msgid "Views"
-msgstr "Visualizzazioni"
+msgstr "Viste"
 
 #. module: base
 #: view:res.groups:0
@@ -13842,7 +13842,7 @@ msgstr ""
 #: model:ir.actions.act_window,name:base.grant_menu_access
 #: model:ir.ui.menu,name:base.menu_grant_menu_access
 msgid "Menu Items"
-msgstr "Elementi del menu"
+msgstr "Menù"
 
 #. module: base
 #: constraint:ir.rule:0
