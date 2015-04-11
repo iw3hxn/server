@@ -8790,7 +8790,7 @@ msgstr "Tutto sembra correttamente configurato!"
 #. module: base
 #: field:res.users,date:0
 msgid "Latest Connection"
-msgstr ""
+msgstr "Ultima Connessione"
 
 #. module: base
 #: view:res.request.link:0
