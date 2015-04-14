@@ -51,6 +51,7 @@ import pickle
 import re
 import simplejson
 import time
+import traceback
 import types
 from lxml import etree
 
