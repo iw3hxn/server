@@ -27,6 +27,9 @@
     Fields Attributes:
         * _classic_read: is a classic sql fields
         * _type   : field type
+        * _auto_join: for one2many and many2one fields, tells whether select
+            queries will join the relational table instead of replacing the
+            field condition by an equivalent-one based on a search.
         * readonly
         * required
         * size
@@ -44,12 +47,14 @@ import openerp
 import openerp.tools as tools
 from openerp.tools.translate import _
 from openerp.tools import float_round, float_repr
+from openerp.tools import html_sanitize
 import simplejson
+from openerp import SUPERUSER_ID
 
 _logger = logging.getLogger(__name__)
 
 def _symbol_set(symb):
-    if symb == None or symb == False:
+    if symb is None or symb == False:
         return None
     elif isinstance(symb, unicode):
         return symb.encode('utf-8')
@@ -65,6 +70,7 @@ class _column(object):
     """
     _classic_read = True
     _classic_write = True
+    _auto_join = False
     _prefetch = True
     _properties = False
     _type = 'unknown'
@@ -108,10 +114,11 @@ class _column(object):
         self.manual = manual
         self.selectable = True
         self.group_operator = args.get('group_operator', False)
+        self.groups = False  # CSV list of ext IDs of groups that can access this field
+        self.deprecated = False # Optional deprecation warning
         for a in args:
-            if args[a]:
-                setattr(self, a, args[a])
-
+            setattr(self, a, args[a])
+ 
     def restart(self):
         pass
 
@@ -126,6 +133,23 @@ class _column(object):
         res = obj.read(cr, uid, ids, [name], context=context)
         return [x[name] for x in res]
 
+    def as_display_name(self, cr, uid, obj, value, context=None):
+        """Converts a field value to a suitable string representation for a record,
+           e.g. when this field is used as ``rec_name``.
+
+           :param obj: the ``BaseModel`` instance this column belongs to 
+           :param value: a proper value as returned by :py:meth:`~openerp.orm.osv.BaseModel.read`
+                         for this column
+        """
+        # delegated to class method, so a column type A can delegate
+        # to a column type B. 
+        return self._as_display_name(self, cr, uid, obj, value, context=None)
+
+    @classmethod
+    def _as_display_name(cls, field, cr, uid, obj, value, context=None):
+        # This needs to be a class method, in case a column type A as to delegate
+        # to a column type B.
+        return tools.ustr(value)
 
 # ---------------------------------------------------------
 # Simple fields
@@ -142,7 +166,7 @@ class boolean(_column):
             _logger.debug(
                 "required=True is deprecated: making a boolean field"
                 " `required` has no effect, as NULL values are "
-                "automatically turned into False.")
+                "automatically turned into False. args: %r",args)
 
 class integer(_column):
     _type = 'integer'
@@ -203,31 +227,55 @@ class reference(_column):
                     result[value['id']] = False
         return result
 
+    @classmethod
+    def _as_display_name(cls, field, cr, uid, obj, value, context=None):
+        if value:
+            # reference fields have a 'model,id'-like value, that we need to convert
+            # to a real name
+            model_name, res_id = value.split(',')
+            model = obj.pool.get(model_name)
+            if model and res_id:
+                names = model.name_get(cr, uid, [int(res_id)], context=context)
+                return names[0][1] if names else False
+        return tools.ustr(value)
+
+# takes a string (encoded in utf8) and returns a string (encoded in utf8)
+def _symbol_set_char(self, symb):
+
+    #TODO:
+    # * we need to remove the "symb==False" from the next line BUT
+    #   for now too many things rely on this broken behavior
+    # * the symb==None test should be common to all data types
+    if symb is None or symb == False:
+        return None
+
+    # we need to convert the string to a unicode object to be able
+    # to evaluate its length (and possibly truncate it) reliably
+    u_symb = tools.ustr(symb)
+    return u_symb[:self.size].encode('utf8')
+
 class char(_column):
     _type = 'char'
 
-    def __init__(self, string, size, **args):
-        _column.__init__(self, string=string, size=size, **args)
-        self._symbol_set = (self._symbol_c, self._symbol_set_char)
-
-    # takes a string (encoded in utf8) and returns a string (encoded in utf8)
-    def _symbol_set_char(self, symb):
-        #TODO:
-        # * we need to remove the "symb==False" from the next line BUT
-        #   for now too many things rely on this broken behavior
-        # * the symb==None test should be common to all data types
-        if symb == None or symb == False:
-            return None
-
-        # we need to convert the string to a unicode object to be able
-        # to evaluate its length (and possibly truncate it) reliably
-        u_symb = tools.ustr(symb)
-
-        return u_symb[:self.size].encode('utf8')
+    def __init__(self, string="unknown", size=None, **args):
+        _column.__init__(self, string=string, size=size or None, **args)
+        # self._symbol_set_char defined to keep the backward compatibility
+        self._symbol_f = self._symbol_set_char = lambda x: _symbol_set_char(self, x)
+        self._symbol_set = (self._symbol_c, self._symbol_f)
 
 
 class text(_column):
     _type = 'text'
+
+class html(text):
+    _type = 'html'
+    _symbol_c = '%s'
+    def _symbol_f(x):
+        if x is None or x == False:
+            return None
+        return html_sanitize(x)
+        
+    _symbol_set = (_symbol_c, _symbol_f)
 
 import __builtin__
 
@@ -279,8 +327,8 @@ class date(_column):
            This method may be passed as value to initialize _defaults.
 
            :param Model model: model (osv) for which the date value is being
-                               computed - technical field, currently ignored,
-                               automatically passed when used in _defaults.
+                               computed - automatically passed when used in
+                                _defaults.
            :param datetime timestamp: optional datetime value to use instead of
                                       the current date and time (must be a
                                       datetime, regular dates can't be converted
@@ -293,9 +341,13 @@ class date(_column):
         today = timestamp or DT.datetime.now()
         context_today = None
         if context and context.get('tz'):
+            tz_name = context['tz']  
+        else:
+            tz_name = model.pool.get('res.users').read(cr, SUPERUSER_ID, uid, ['tz'])['tz']
+        if tz_name:
             try:
                 utc = pytz.timezone('UTC')
-                context_tz = pytz.timezone(context['tz'])
+                context_tz = pytz.timezone(tz_name)
                 utc_today = utc.localize(today, is_dst=False) # UTC = no DST
                 context_today = utc_today.astimezone(context_tz)
             except Exception:
@@ -336,9 +388,14 @@ class datetime(_column):
         """
         assert isinstance(timestamp, DT.datetime), 'Datetime instance expected'
         if context and context.get('tz'):
+            tz_name = context['tz']  
+        else:
+            registry = openerp.modules.registry.RegistryManager.get(cr.dbname)
+            tz_name = registry.get('res.users').read(cr, SUPERUSER_ID, uid, ['tz'])['tz']
+        if tz_name:
             try:
                 utc = pytz.timezone('UTC')
-                context_tz = pytz.timezone(context['tz'])
+                context_tz = pytz.timezone(tz_name)
                 utc_timestamp = utc.localize(timestamp, is_dst=False) # UTC = no DST
                 return utc_timestamp.astimezone(context_tz)
             except Exception:
@@ -463,9 +520,10 @@ class many2one(_column):
     _symbol_f = lambda x: x or None
     _symbol_set = (_symbol_c, _symbol_f)
 
-    def __init__(self, obj, string='unknown', **args):
+    def __init__(self, obj, string='unknown', auto_join=False, **args):
         _column.__init__(self, string=string, **args)
         self._obj = obj
+        self._auto_join = auto_join
 
     def get(self, cr, obj, ids, name, user=None, context=None, values=None):
         if context is None:
@@ -483,7 +541,7 @@ class many2one(_column):
         # build a dictionary of the form {'id_of_distant_resource': name_of_distant_resource}
         # we use uid=1 because the visibility of a many2one field value (just id and name)
         # must be the access right of the parent form and not the linked object itself.
-        records = dict(obj.name_get(cr, 1,
+        records = dict(obj.name_get(cr, SUPERUSER_ID,
                                     list(set([x for x in res.values() if isinstance(x, (int,long)) and not isinstance(x, bool)])),
                                     context=context))
         for id in res:
@@ -520,6 +578,11 @@ class many2one(_column):
     def search(self, cr, obj, args, name, value, offset=0, limit=None, uid=None, context=None):
         return obj.pool.get(self._obj).search(cr, uid, args+self._domain+[('name', 'like', value)], offset, limit, context=context)
 
+    
+    @classmethod
+    def _as_display_name(cls, field, cr, uid, obj, value, context=None):
+        return value[1] if isinstance(value, tuple) else tools.ustr(value) 
+
 
 class one2many(_column):
     _classic_read = False
@@ -527,11 +590,12 @@ class one2many(_column):
     _prefetch = False
     _type = 'one2many'
 
-    def __init__(self, obj, fields_id, string='unknown', limit=None, **args):
+    def __init__(self, obj, fields_id, string='unknown', limit=None, auto_join=False, **args):
         _column.__init__(self, string=string, **args)
         self._obj = obj
         self._fields_id = fields_id
         self._limit = limit
+        self._auto_join = auto_join
         #one2many can't be used as condition for defaults
         assert(self.change_default != True)
 
@@ -548,7 +612,8 @@ class one2many(_column):
         for id in ids:
             res[id] = []
 
-        ids2 = obj.pool.get(self._obj).search(cr, user, self._domain + [(self._fields_id, 'in', ids)], limit=self._limit, context=context)
+        domain = self._domain(obj) if callable(self._domain) else self._domain
+        ids2 = obj.pool.get(self._obj).search(cr, user, domain + [(self._fields_id, 'in', ids)], limit=self._limit, context=context)
         for r in obj.pool.get(self._obj)._read_flat(cr, user, ids2, [self._fields_id], context=context, load='_classic_write'):
             if r[self._fields_id] in res:
                 res[r[self._fields_id]].append(r['id'])
@@ -597,7 +662,8 @@ class one2many(_column):
                 reverse_rel = obj._all_columns.get(self._fields_id)
                 assert reverse_rel, 'Trying to unlink the content of a o2m but the pointed model does not have a m2o'
                 # if the o2m has a static domain we must respect it when unlinking
-                extra_domain = self._domain if isinstance(getattr(self, '_domain', None), list) else [] 
+                domain = self._domain(obj) if callable(self._domain) else self._domain
+                extra_domain = domain or []
                 ids_to_unlink = obj.search(cr, user, [(self._fields_id,'=',id)] + extra_domain, context=context)
                 # If the model has cascade deletion, we delete the rows because it is the intended behavior,
                 # otherwise we only nullify the reverse foreign key column.
@@ -615,8 +681,13 @@ class one2many(_column):
         return result
 
     def search(self, cr, obj, args, name, value, offset=0, limit=None, uid=None, operator='like', context=None):
-        return obj.pool.get(self._obj).name_search(cr, uid, value, self._domain, operator, context=context,limit=limit)
+        domain = self._domain(obj) if callable(self._domain) else self._domain
+        return obj.pool.get(self._obj).name_search(cr, uid, value, domain, operator, context=context,limit=limit)
 
+    
+    @classmethod
+    def _as_display_name(cls, field, cr, uid, obj, value, context=None):
+        raise NotImplementedError('One2Many columns should not be used as record name (_rec_name)') 
 
 #
 # Values: (0, 0,  { fields })    create
@@ -693,7 +764,21 @@ class many2many(_column):
                 col1 = '%s_id' % source_model._table
             if not col2:
                 col2 = '%s_id' % dest_model._table
-        return (tbl, col1, col2)
+        return tbl, col1, col2
+
+    def _get_query_and_where_params(self, cr, model, ids, values, where_params):
+        """ Extracted from ``get`` to facilitate fine-tuning of the generated
+            query. """
+        query = 'SELECT %(rel)s.%(id2)s, %(rel)s.%(id1)s \
+                   FROM %(rel)s, %(from_c)s \
+                  WHERE %(rel)s.%(id1)s IN %%s \
+                    AND %(rel)s.%(id2)s = %(tbl)s.id \
+                 %(where_c)s  \
+                 %(order_by)s \
+                 %(limit)s \
+                 OFFSET %(offset)d' \
+                 % values
+        return query, where_params
 
     def get(self, cr, model, ids, name, user=None, offset=0, context=None, values=None):
         if not context:
@@ -729,15 +814,7 @@ class many2many(_column):
         if self._limit is not None:
             limit_str = ' LIMIT %d' % self._limit
 
-        query = 'SELECT %(rel)s.%(id2)s, %(rel)s.%(id1)s \
-                   FROM %(rel)s, %(from_c)s \
-                  WHERE %(rel)s.%(id1)s IN %%s \
-                    AND %(rel)s.%(id2)s = %(tbl)s.id \
-                 %(where_c)s  \
-                 %(order_by)s \
-                 %(limit)s \
-                 OFFSET %(offset)d' \
-            % {'rel': rel,
+        query, where_params = self._get_query_and_where_params(cr, model, ids, {'rel': rel,
                'from_c': from_c,
                'tbl': obj._table,
                'id1': id1,
@@ -746,7 +823,8 @@ class many2many(_column):
                'limit': limit_str,
                'order_by': order_by,
                'offset': offset,
-              }
+                }, where_params)
+
         cr.execute(query, [tuple(ids),] + where_params)
         for r in cr.fetchall():
             res[r[1]].append(r[0])
@@ -795,6 +873,10 @@ class many2many(_column):
     #
     def search(self, cr, obj, args, name, value, offset=0, limit=None, uid=None, operator='like', context=None):
         return obj.pool.get(self._obj).search(cr, uid, args+self._domain+[('name', operator, value)], offset, limit, context=context)
+
+    @classmethod
+    def _as_display_name(cls, field, cr, uid, obj, value, context=None):
+        raise NotImplementedError('Many2Many columns should not be used as record name (_rec_name)') 
 
 
 def get_nice_size(value):
@@ -1085,10 +1167,15 @@ class function(_column):
             self._symbol_f = boolean._symbol_f
             self._symbol_set = boolean._symbol_set
 
-        if type in ['integer','integer_big']:
+        if type == 'integer':
             self._symbol_c = integer._symbol_c
             self._symbol_f = integer._symbol_f
             self._symbol_set = integer._symbol_set
+
+        if type == 'char':
+            self._symbol_c = char._symbol_c
+            self._symbol_f = lambda x: _symbol_set_char(self, x)
+            self._symbol_set = (self._symbol_c, self._symbol_f)
 
     def digits_change(self, cr):
         if self._type == 'float':
@@ -1115,7 +1202,7 @@ class function(_column):
             # make the result a tuple if it is not already one
             if isinstance(value, (int,long)) and hasattr(obj._columns[field], 'relation'):
                 obj_model = obj.pool.get(obj._columns[field].relation)
-                dict_names = dict(obj_model.name_get(cr, uid, [value], context))
+                dict_names = dict(obj_model.name_get(cr, SUPERUSER_ID, [value], context))
                 result = (value, dict_names[value])
 
         if field_type == 'binary':
@@ -1125,13 +1212,13 @@ class function(_column):
             elif not context.get('bin_raw'):
                 result = sanitize_binary_value(value)
 
-        if field_type in ("integer","integer_big") and value > xmlrpclib.MAXINT:
+        if field_type == "integer" and value > xmlrpclib.MAXINT:
             # integer/long values greater than 2^31-1 are not supported
             # in pure XMLRPC, so we have to pass them as floats :-(
             # This is not needed for stored fields and non-functional integer
             # fields, as their values are constrained by the database backend
             # to the same 32bits signed int limit.
-            result = float(value)
+            result = __builtin__.float(value)
         return result
 
     def get(self, cr, obj, ids, name, uid=False, context=None, values=None):
@@ -1151,6 +1238,12 @@ class function(_column):
         if self._fnct_inv:
             self._fnct_inv(obj, cr, user, id, name, value, self._fnct_inv_arg, context)
 
+    @classmethod
+    def _as_display_name(cls, field, cr, uid, obj, value, context=None):
+        # Function fields are supposed to emulate a basic field type,
+        # so they can delegate to the basic type for record name rendering
+        return globals()[field._type]._as_display_name(field, cr, uid, obj, value, context=context)
+
 # ---------------------------------------------------------
 # Related fields
 # ---------------------------------------------------------
@@ -1167,87 +1260,51 @@ class related(function):
     """
 
     def _fnct_search(self, tobj, cr, uid, obj=None, name=None, domain=None, context=None):
-        self._field_get2(cr, uid, obj, context)
-        i = len(self._arg)-1
-        sarg = name
-        while i>0:
-            if type(sarg) in [type([]), type( (1,) )]:
-                where = [(self._arg[i], 'in', sarg)]
-            else:
-                where = [(self._arg[i], '=', sarg)]
-            if domain:
-                where = map(lambda x: (self._arg[i],x[1], x[2]), domain)
-                domain = []
-            sarg = obj.pool.get(self._relations[i]['object']).search(cr, uid, where, context=context)
-            i -= 1
-        return [(self._arg[0], 'in', sarg)]
+        # assume self._arg = ('foo', 'bar', 'baz')
+        # domain = [(name, op, val)]   =>   search [('foo.bar.baz', op, val)]
+        field = '.'.join(self._arg)
+        return map(lambda x: (field, x[1], x[2]), domain)
 
     def _fnct_write(self,obj,cr, uid, ids, field_name, values, args, context=None):
-        self._field_get2(cr, uid, obj, context=context)
-        if type(ids) != type([]):
-            ids=[ids]
-        objlst = obj.browse(cr, uid, ids)
-        for data in objlst:
-            t_data = data
-            for i in range(len(self.arg) - 1):
-                if not t_data[self.arg[i]]:
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        for record in obj.browse(cr, uid, ids, context=context):
+            # traverse all fields except the last one
+            for field in self.arg[:-1]:
+                record = record[field] or False
+                if not record:
                     break
-                if self._relations[i]['type'] in ('one2many', 'many2many'):
-                    t_data = t_data[self.arg[i]][0]
-                else:
-                    t_data = t_data[self.arg[i]]
-            else:
-                t_id = t_data.id
-                model = obj.pool.get(self._relations[-1]['object'])
-                model.write(cr, uid, [t_id], {args[-1]: values}, context=context)
+                elif isinstance(record, list):
+                    # record is the result of a one2many or many2many field
+                    record = record[0]
+            if record:
+                # write on the last field
+                record.write({self.arg[-1]: values})
 
     def _fnct_read(self, obj, cr, uid, ids, field_name, args, context=None):
-        self._field_get2(cr, uid, obj, context)
-        if not ids: return {}
-        relation = obj._name
-        if self._type in ('one2many', 'many2many'):
-            res = dict([(i, []) for i in ids])
-        else:
-            res = {}.fromkeys(ids, False)
-
-        objlst = obj.browse(cr, 1, ids, context=context)
-        for data in objlst:
-            if not data:
-                continue
-            t_data = data
-            relation = obj._name
-            for i in range(len(self.arg)):
-                field_detail = self._relations[i]
-                relation = field_detail['object']
-                try:
-                    if not t_data[self.arg[i]]:
-                        t_data = False
-                        break
-                except:
-                    t_data = False
+        res = {}
+        for record in obj.browse(cr, SUPERUSER_ID, ids, context=context):
+            value = record
+            for field in self.arg:
+                if isinstance(value, list):
+                    value = value[0]
+                value = value[field] or False
+                if not value:
                     break
-                if field_detail['type'] in ('one2many', 'many2many') and i != len(self.arg) - 1:
-                    t_data = t_data[self.arg[i]][0]
-                elif t_data:
-                    t_data = t_data[self.arg[i]]
-            if type(t_data) == type(objlst[0]):
-                res[data.id] = t_data.id
-            elif t_data:
-                res[data.id] = t_data
-        if self._type=='many2one':
-            ids = filter(None, res.values())
-            if ids:
-                # name_get as root, as seeing the name of a related
-                # object depends on access right of source document,
-                # not target, so user may not have access.
-                ng = dict(obj.pool.get(self._obj).name_get(cr, 1, ids, context=context))
-                for r in res:
-                    if res[r]:
-                        res[r] = (res[r], ng[res[r]])
+            res[record.id] = value
+
+        if self._type == 'many2one':
+            # res[id] is a browse_record or False; convert it to (id, name) or False.
+            # Perform name_get as root, as seeing the name of a related object depends on
+            # access right of source document, not target, so user may not have access.
+            value_ids = list(set(value.id for value in res.itervalues() if value))
+            value_name = dict(obj.pool.get(self._obj).name_get(cr, SUPERUSER_ID, value_ids, context=context))
+            res = dict((id, value and (value.id, value_name[value.id])) for id, value in res.iteritems())
+
         elif self._type in ('one2many', 'many2many'):
-            for r in res:
-                if res[r]:
-                    res[r] = [x.id for x in res[r]]
+            # res[id] is a list of browse_record or False; convert it to a list of ids
+            res = dict((id, value and map(int, value) or []) for id, value in res.iteritems())
+
         return res
 
     def __init__(self, *arg, **args):
@@ -1367,7 +1424,7 @@ class sparse(function):
 
     def __init__(self, serialization_field, **kwargs):
         self.serialization_field = serialization_field
-        return super(sparse, self).__init__(self._fnct_read, fnct_inv=self._fnct_write, multi='__sparse_multi', **kwargs)
+        super(sparse, self).__init__(self._fnct_read, fnct_inv=self._fnct_write, multi='__sparse_multi', **kwargs)
      
 
 
@@ -1438,7 +1495,8 @@ class property(function):
         vids = [obj._name + ',' + str(oid) for oid in  ids]
 
         domain = [('fields_id.model', '=', obj._name), ('fields_id.name', 'in', prop_name)]
-        #domain = prop._get_domain(cr, uid, prop_name, obj._name, context)
+        if context and context.get('company_id'):
+            domain += [('company_id', '=', context.get('company_id'))]
         if vids:
             domain = [('res_id', 'in', vids)] + domain
         return prop.search(cr, uid, domain, context=context)
@@ -1448,7 +1506,12 @@ class property(function):
         if context is None:
             context = {}
 
-        nids = self._get_by_id(obj, cr, uid, [prop_name], [id], context)
+        def_id = self._field_get(cr, uid, obj._name, prop_name)
+        company = obj.pool.get('res.company')
+        cid = company._company_default_get(cr, uid, obj._name, def_id, context=context)
+        # TODO for trunk: add new parameter company_id to _get_by_id method
+        context_company = dict(context, company_id=cid)
+        nids = self._get_by_id(obj, cr, uid, [prop_name], [id], context_company)
         if nids:
             cr.execute('DELETE FROM ir_property WHERE id IN %s', (tuple(nids),))
 
@@ -1506,7 +1569,7 @@ class property(function):
                 # not target, so user may not have access) in order to avoid
                 # pointing on an unexisting record.
                 if property_destination_obj:
-                    if res[id][prop_name] and obj.pool.get(property_destination_obj).exists(cr, 1, res[id][prop_name].id):
+                    if res[id][prop_name] and obj.pool.get(property_destination_obj).exists(cr, SUPERUSER_ID, res[id][prop_name].id):
                         name_get_ids[id] = res[id][prop_name].id
                     else:
                         res[id][prop_name] = False
@@ -1514,7 +1577,7 @@ class property(function):
                 # name_get as root (as seeing the name of a related
                 # object depends on access right of source document,
                 # not target, so user may not have access.)
-                name_get_values = dict(obj.pool.get(property_destination_obj).name_get(cr, 1, name_get_ids.values(), context=context))
+                name_get_values = dict(obj.pool.get(property_destination_obj).name_get(cr, SUPERUSER_ID, name_get_ids.values(), context=context))
                 # the property field is a m2o, we need to return a tuple with (id, name)
                 for k, v in name_get_ids.iteritems():
                     if res[k][prop_name]:
@@ -1550,9 +1613,7 @@ def field_to_dict(model, cr, user, field, context=None):
     """
 
     res = {'type': field._type}
-    # This additional attributes for M2M and function field is added
-    # because we need to display tooltip with this additional information
-    # when client is started in debug mode.
+    # some attributes for m2m/function field are added as debug info only
     if isinstance(field, function):
         res['function'] = field._fnct and field._fnct.func_name or False
         res['store'] = field.store
@@ -1564,13 +1625,11 @@ def field_to_dict(model, cr, user, field, context=None):
         res['func_obj'] = field._obj or False
     if isinstance(field, many2many):
         (table, col1, col2) = field._sql_names(model)
-        res['related_columns'] = [col1, col2]
-        res['third_table'] = table
-    for arg in ('string', 'readonly', 'states', 'size', 'required', 'group_operator',
-            'change_default', 'translate', 'help', 'select', 'selectable'):
-        if getattr(field, arg):
-            res[arg] = getattr(field, arg)
-    for arg in ('digits', 'invisible', 'filters'):
+        res['m2m_join_columns'] = [col1, col2]
+        res['m2m_join_table'] = table
+    for arg in ('string', 'readonly', 'states', 'size', 'group_operator', 'required',
+            'change_default', 'translate', 'help', 'select', 'selectable', 'groups',
+            'deprecated', 'digits', 'invisible', 'filters'):
         if getattr(field, arg, None):
             res[arg] = getattr(field, arg)
 
@@ -1585,9 +1644,9 @@ def field_to_dict(model, cr, user, field, context=None):
         else:
             # call the 'dynamic selection' function
             res['selection'] = field.selection(model, cr, user, context)
-    if res['type'] in ('one2many', 'many2many', 'many2one', 'one2one'):
+    if res['type'] in ('one2many', 'many2many', 'many2one'):
         res['relation'] = field._obj
-        res['domain'] = field._domain
+        res['domain'] = field._domain(model) if callable(field._domain) else field._domain
         res['context'] = field._context
 
     if isinstance(field, one2many):
@@ -1597,19 +1656,32 @@ def field_to_dict(model, cr, user, field, context=None):
 
 
 class column_info(object):
-    """Struct containing details about an osv column, either one local to
-       its model, or one inherited via _inherits.
+    """ Struct containing details about an osv column, either one local to
+        its model, or one inherited via _inherits.
 
-       :attr name: name of the column
-       :attr column: column instance, subclass of osv.fields._column
-       :attr parent_model: if the column is inherited, name of the model
-                           that contains it, None for local columns.
-       :attr parent_column: the name of the column containing the m2o
-                            relationship to the parent model that contains
-                            this column, None for local columns.
-       :attr original_parent: if the column is inherited, name of the original
-                            parent model that contains it i.e in case of multilevel
-                            inheritence, None for local columns.
+        .. attribute:: name
+
+            name of the column
+
+        .. attribute:: column
+
+            column instance, subclass of :class:`_column`
+
+        .. attribute:: parent_model
+
+            if the column is inherited, name of the model that contains it,
+            ``None`` for local columns.
+
+        .. attribute:: parent_column
+
+            the name of the column containing the m2o relationship to the
+            parent model that contains this column, ``None`` for local columns.
+
+        .. attribute:: original_parent
+
+            if the column is inherited, name of the original parent model that
+            contains it i.e in case of multilevel inheritance, ``None`` for
+            local columns.
     """
     def __init__(self, name, column, parent_model=None, parent_column=None, original_parent=None):
         self.name = name
@@ -1617,6 +1689,11 @@ class column_info(object):
         self.parent_model = parent_model
         self.parent_column = parent_column
         self.original_parent = original_parent
+
+    def __str__(self):
+        return '%s(%s, %s, %s, %s, %s)' % (
+            self.__class__.__name__, self.name, self.column,
+            self.parent_model, self.parent_column, self.original_parent)
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
 

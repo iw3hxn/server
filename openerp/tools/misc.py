@@ -3,7 +3,7 @@
 #
 #    OpenERP, Open Source Management Solution
 #    Copyright (C) 2004-2009 Tiny SPRL (<http://tiny.be>).
-#    Copyright (C) 2010-2012 OpenERP s.a. (<http://openerp.com>).
+#    Copyright (C) 2010-2013 OpenERP s.a. (<http://openerp.com>).
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU Affero General Public License as
@@ -23,16 +23,14 @@
 #.apidoc title: Utilities: tools.misc
 
 """
-Miscelleanous tools used by OpenERP.
+Miscellaneous tools used by OpenERP.
 """
 
 from functools import wraps
-import inspect
+import cProfile
 import subprocess
 import logging
 import os
-import re
-import smtplib
 import socket
 import sys
 import threading
@@ -40,24 +38,16 @@ import time
 import zipfile
 from collections import defaultdict
 from datetime import datetime
-from email.MIMEText import MIMEText
-from email.MIMEBase import MIMEBase
-from email.MIMEMultipart import MIMEMultipart
-from email.Header import Header
-from email.Utils import formatdate, COMMASPACE
-from email import Utils
-from email import Encoders
-from itertools import islice, izip
+from itertools import islice, izip, groupby
 from lxml import etree
 from which import which
 from threading import local
+
 try:
     from html2text import html2text
 except ImportError:
     html2text = None
 
-import openerp.loglevels as loglevels
-import openerp.pooler as pooler
 from config import config
 from cache import *
 
@@ -103,7 +93,7 @@ def exec_pg_command_pipe(name, *args):
     pop = subprocess.Popen((prog,) + args, bufsize= -1,
           stdin=subprocess.PIPE, stdout=subprocess.PIPE,
           close_fds=(os.name=="posix"))
-    return (pop.stdin, pop.stdout)
+    return pop.stdin, pop.stdout
 
 def exec_command_pipe(name, *args):
     prog = find_in_path(name)
@@ -114,7 +104,7 @@ def exec_command_pipe(name, *args):
     pop = subprocess.Popen((prog,) + args, bufsize= -1,
           stdin=subprocess.PIPE, stdout=subprocess.PIPE,
           close_fds=(os.name=="posix"))
-    return (pop.stdin, pop.stdout)
+    return pop.stdin, pop.stdout
 
 #----------------------------------------------------------
 # File paths
@@ -134,7 +124,7 @@ def file_open(name, mode="r", subdir='addons', pathinfo=False):
     @param name name of the file
     @param mode file open mode
     @param subdir subdirectory
-    @param pathinfo if True returns tupple (fileobject, filepath)
+    @param pathinfo if True returns tuple (fileobject, filepath)
 
     @return fileobject if pathinfo is False else (fileobject, filepath)
     """
@@ -142,44 +132,66 @@ def file_open(name, mode="r", subdir='addons', pathinfo=False):
     adps = addons.module.ad_paths
     rtp = os.path.normcase(os.path.abspath(config['root_path']))
 
-    if name.replace(os.path.sep, '/').startswith('addons/'):
+    basename = name
+
+    if os.path.isabs(name):
+        # It is an absolute path
+        # Is it below 'addons_path' or 'root_path'?
+        name = os.path.normcase(os.path.normpath(name))
+        for root in adps + [rtp]:
+            root = os.path.normcase(os.path.normpath(root)) + os.sep
+            if name.startswith(root):
+                base = root.rstrip(os.sep)
+                name = name[len(base) + 1:]
+                break
+        else:
+            # It is outside the OpenERP root: skip zipfile lookup.
+            base, name = os.path.split(name)
+        return _fileopen(name, mode=mode, basedir=base, pathinfo=pathinfo, basename=basename)
+
+    if name.replace(os.sep, '/').startswith('addons/'):
         subdir = 'addons'
-        name = name[7:]
+        name2 = name[7:]
+    elif subdir:
+        name = os.path.join(subdir, name)
+        if name.replace(os.sep, '/').startswith('addons/'):
+            subdir = 'addons'
+            name2 = name[7:]
+        else:
+            name2 = name
 
-    # First try to locate in addons_path
+    # First, try to locate in addons_path
     if subdir:
-        subdir2 = subdir
-        if subdir2.replace(os.path.sep, '/').startswith('addons/'):
-            subdir2 = subdir2[7:]
-
-        subdir2 = (subdir2 != 'addons' or None) and subdir2
-
         for adp in adps:
             try:
-                if subdir2:
-                    fn = os.path.join(adp, subdir2, name)
-                else:
-                    fn = os.path.join(adp, name)
-                fn = os.path.normpath(fn)
-                fo = file_open(fn, mode=mode, subdir=None, pathinfo=pathinfo)
-                if pathinfo:
-                    return fo, fn
-                return fo
+                return _fileopen(name2, mode=mode, basedir=adp,
+                                 pathinfo=pathinfo, basename=basename)
             except IOError:
                 pass
 
-    if subdir:
-        name = os.path.join(rtp, subdir, name)
-    else:
-        name = os.path.join(rtp, name)
+    # Second, try to locate in root_path
+    return _fileopen(name, mode=mode, basedir=rtp, pathinfo=pathinfo, basename=basename)
 
-    name = os.path.normpath(name)
 
-    # Check for a zipfile in the path
-    head = name
+def _fileopen(path, mode, basedir, pathinfo, basename=None):
+    name = os.path.normpath(os.path.join(basedir, path))
+
+    if basename is None:
+        basename = name
+    # Give higher priority to module directories, which is
+    # a more common case than zipped modules.
+    if os.path.isfile(name):
+        fo = open(name, mode)
+        if pathinfo:
+            return fo, name
+        return fo
+
+    # Support for loading modules in zipped form.
+    # This will not work for zipped modules that are sitting
+    # outside of known addons paths.
+    head = os.path.normpath(path)
     zipname = False
-    name2 = False
-    while True:
+    while os.sep in head:
         head, tail = os.path.split(head)
         if not tail:
             break
@@ -187,9 +199,10 @@ def file_open(name, mode="r", subdir='addons', pathinfo=False):
             zipname = os.path.join(tail, zipname)
         else:
             zipname = tail
-        if zipfile.is_zipfile(head+'.zip'):
+        zpath = os.path.join(basedir, head + '.zip')
+        if zipfile.is_zipfile(zpath):
             from cStringIO import StringIO
-            zfile = zipfile.ZipFile(head+'.zip')
+            zfile = zipfile.ZipFile(zpath)
             try:
                 fo = StringIO()
                 fo.write(zfile.read(os.path.join(
@@ -200,17 +213,11 @@ def file_open(name, mode="r", subdir='addons', pathinfo=False):
                     return fo, name
                 return fo
             except Exception:
-                name2 = os.path.normpath(os.path.join(head + '.zip', zipname))
                 pass
-    for i in (name2, name):
-        if i and os.path.isfile(i):
-            fo = file(i, mode)
-            if pathinfo:
-                return fo, i
-            return fo
-    if os.path.splitext(name)[1] == '.rml':
-        raise IOError, 'Report %s doesn\'t exist or deleted : ' %str(name)
-    raise IOError, 'File not found : %s' % name
+    # Not found
+    if name.endswith('.rml'):
+        raise IOError('Report %r doesn\'t exist or deleted' % basename)
+    raise IOError('File not found: %s' % basename)
 
 
 #----------------------------------------------------------
@@ -265,131 +272,6 @@ def reverse_enumerate(l):
     StopIteration
     """
     return izip(xrange(len(l)-1, -1, -1), reversed(l))
-
-#----------------------------------------------------------
-# Emails
-#----------------------------------------------------------
-email_re = re.compile(r"""
-    ([a-zA-Z][\w\.-]*[a-zA-Z0-9]     # username part
-    @                                # mandatory @ sign
-    [a-zA-Z0-9][\w\.-]*              # domain must start with a letter ... Ged> why do we include a 0-9 then?
-     \.
-     [a-z]{2,3}                      # TLD
-    )
-    """, re.VERBOSE)
-res_re = re.compile(r"\[([0-9]+)\]", re.UNICODE)
-command_re = re.compile("^Set-([a-z]+) *: *(.+)$", re.I + re.UNICODE)
-reference_re = re.compile("<.*-open(?:object|erp)-(\\d+).*@(.*)>", re.UNICODE)
-
-def html2plaintext(html, body_id=None, encoding='utf-8'):
-    """ From an HTML text, convert the HTML to plain text.
-    If @param body_id is provided then this is the tag where the
-    body (not necessarily <body>) starts.
-    """
-    ## (c) Fry-IT, www.fry-it.com, 2007
-    ## <peter@fry-it.com>
-    ## download here: http://www.peterbe.com/plog/html2plaintext
-
-    html = ustr(html)
-
-    from lxml.etree import tostring
-    try:
-        from lxml.html.soupparser import fromstring
-        kwargs = {}
-    except ImportError:
-        _logger.debug('tools.misc.html2plaintext: cannot use BeautifulSoup, fallback to lxml.etree.HTMLParser')
-        from lxml.etree import fromstring, HTMLParser
-        kwargs = dict(parser=HTMLParser())
-
-    tree = fromstring(html, **kwargs)
-
-    if body_id is not None:
-        source = tree.xpath('//*[@id=%s]'%(body_id,))
-    else:
-        source = tree.xpath('//body')
-    if len(source):
-        tree = source[0]
-
-    url_index = []
-    i = 0
-    for link in tree.findall('.//a'):
-        url = link.get('href')
-        if url:
-            i += 1
-            link.tag = 'span'
-            link.text = '%s [%s]' % (link.text, i)
-            url_index.append(url)
-
-    html = ustr(tostring(tree, encoding=encoding))
-
-    html = html.replace('<strong>','*').replace('</strong>','*')
-    html = html.replace('<b>','*').replace('</b>','*')
-    html = html.replace('<h3>','*').replace('</h3>','*')
-    html = html.replace('<h2>','**').replace('</h2>','**')
-    html = html.replace('<h1>','**').replace('</h1>','**')
-    html = html.replace('<em>','/').replace('</em>','/')
-    html = html.replace('<tr>', '\n')
-    html = html.replace('</p>', '\n')
-    html = re.sub('<br\s*/?>', '\n', html)
-    html = re.sub('<.*?>', ' ', html)
-    html = html.replace(' ' * 2, ' ')
-
-    # strip all lines
-    html = '\n'.join([x.strip() for x in html.splitlines()])
-    html = html.replace('\n' * 2, '\n')
-
-    for i, url in enumerate(url_index):
-        if i == 0:
-            html += '\n\n'
-        html += ustr('[%s] %s\n') % (i+1, url)
-
-    return html
-
-def generate_tracking_message_id(res_id):
-    """Returns a string that can be used in the Message-ID RFC822 header field
-    
-       Used to track the replies related to a given object thanks to the "In-Reply-To"
-       or "References" fields that Mail User Agents will set.
-    """
-    return "<%s-openerp-%s@%s>" % (time.time(), res_id, socket.gethostname())
-
-def email_send(email_from, email_to, subject, body, email_cc=None, email_bcc=None, reply_to=False,
-               attachments=None, message_id=None, references=None, openobject_id=False, debug=False, subtype='plain', headers=None,
-               smtp_server=None, smtp_port=None, ssl=False, smtp_user=None, smtp_password=None, cr=None, uid=None):
-    """Low-level function for sending an email (deprecated).
-
-    :deprecate: since OpenERP 6.1, please use ir.mail_server.send_email() instead. 
-    :param email_from: A string used to fill the `From` header, if falsy,
-                       config['email_from'] is used instead.  Also used for
-                       the `Reply-To` header if `reply_to` is not provided
-    :param email_to: a sequence of addresses to send the mail to.
-    """
-    # If not cr, get cr from current thread database
-    local_cr = None
-    if not cr:
-        db_name = getattr(threading.currentThread(), 'dbname', None)
-        if db_name:
-            local_cr = cr = pooler.get_db_only(db_name).cursor()
-        else:
-            raise Exception("No database cursor found, please pass one explicitly")
-
-    # Send Email
-    try:
-        mail_server_pool = pooler.get_pool(cr.dbname).get('ir.mail_server')
-        res = False
-        # Pack Message into MIME Object
-        email_msg = mail_server_pool.build_email(email_from, email_to, subject, body, email_cc, email_bcc, reply_to,
-                   attachments, message_id, references, openobject_id, subtype, headers=headers)
-
-        res = mail_server_pool.send_email(cr, uid or 1, email_msg, mail_server_id=None,
-                       smtp_server=smtp_server, smtp_port=smtp_port, smtp_user=smtp_user, smtp_password=smtp_password,
-                       smtp_encryption=('ssl' if ssl else None), smtp_debug=debug)
-    except Exception:
-        _logger.exception("tools.email_send failed to deliver email")
-        return False
-    finally:
-        if local_cr: local_cr.close()
-    return res
 
 #----------------------------------------------------------
 # SMS
@@ -550,12 +432,10 @@ def get_iso_codes(lang):
             lang = lang.split('_')[0]
     return lang
 
-def get_languages():
-    # The codes below are those from Launchpad's Rosetta, with the exception
-    # of some trivial codes where the Launchpad code is xx and we have xx_XX.
-    languages={
+ALL_LANGUAGES = {
         'ab_RU': u'Abkhazian / аҧсуа',
-        'ar_AR': u'Arabic / الْعَرَبيّة',
+        'am_ET': u'Amharic / አምሃርኛ',
+        'ar_SY': u'Arabic / الْعَرَبيّة',
         'bg_BG': u'Bulgarian / български език',
         'bs_BS': u'Bosnian / bosanski jezik',
         'ca_ES': u'Catalan / Català',
@@ -603,6 +483,7 @@ def get_languages():
         'ja_JP': u'Japanese / 日本語',
         'ko_KP': u'Korean (KP) / 한국어 (KP)',
         'ko_KR': u'Korean (KR) / 한국어 (KR)',
+        'lo_LA': u'Lao / ພາສາລາວ',
         'lt_LT': u'Lithuanian / Lietuvių kalba',
         'lv_LV': u'Latvian / latviešu valoda',
         'ml_IN': u'Malayalam / മലയാളം',
@@ -612,8 +493,8 @@ def get_languages():
         'nl_BE': u'Flemish (BE) / Vlaams (BE)',
         'oc_FR': u'Occitan (FR, post 1500) / Occitan',
         'pl_PL': u'Polish / Język polski',
-        'pt_BR': u'Portugese (BR) / Português (BR)',
-        'pt_PT': u'Portugese / Português',
+        'pt_BR': u'Portuguese (BR) / Português (BR)',
+        'pt_PT': u'Portuguese / Português',
         'ro_RO': u'Romanian / română',
         'ru_RU': u'Russian / русский язык',
         'si_LK': u'Sinhalese / සිංහල',
@@ -634,15 +515,14 @@ def get_languages():
         'th_TH': u'Thai / ภาษาไทย',
         'tlh_TLH': u'Klingon',
     }
-    return languages
 
 def scan_languages():
-    # Now it will take all languages from get languages function without filter it with base module languages
-    lang_dict = get_languages()
-    ret = [(lang, lang_dict.get(lang, lang)) for lang in list(lang_dict)]
-    ret.sort(key=lambda k:k[1])
-    return ret
+    """ Returns all languages supported by OpenERP for translation
 
+    :returns: a list of (lang_code, lang_name) pairs
+    :rtype: [(str, unicode)]
+    """
+    return sorted(ALL_LANGUAGES.iteritems(), key=lambda k: k[1])
 
 def get_user_companies(cr, user):
     def _get_company_children(cr, ids):
@@ -685,8 +565,8 @@ def human_size(sz):
         sz=len(sz)
     s, i = float(sz), 0
     while s >= 1024 and i < len(units)-1:
-        s = s / 1024
-        i = i + 1
+        s /= 1024
+        i += 1
     return "%0.2f %s" % (s, units[i])
 
 def logged(f):
@@ -717,16 +597,10 @@ class profile(object):
     def __call__(self, f):
         @wraps(f)
         def wrapper(*args, **kwargs):
-            class profile_wrapper(object):
-                def __init__(self):
-                    self.result = None
-                def __call__(self):
-                    self.result = f(*args, **kwargs)
-            pw = profile_wrapper()
-            import cProfile
-            fname = self.fname or ("%s.cprof" % (f.func_name,))
-            cProfile.runctx('pw()', globals(), locals(), filename=fname)
-            return pw.result
+            profile = cProfile.Profile()
+            result = profile.runcall(f, *args, **kwargs)
+            profile.dump_stats(self.fname or ("%s.cprof" % (f.func_name,)))
+            return result
 
         return wrapper
 
@@ -855,7 +729,7 @@ def get_win32_timezone():
        @return the standard name of the current win32 timezone, or False if it cannot be found.
     """
     res = False
-    if (sys.platform == "win32"):
+    if sys.platform == "win32":
         try:
             import _winreg
             hklm = _winreg.ConnectRegistry(None,_winreg.HKEY_LOCAL_MACHINE)
@@ -886,7 +760,7 @@ def detect_server_timezone():
                 (time.tzname[0], 'time.tzname'),
                 (os.environ.get('TZ',False),'TZ environment variable'), ]
     # Option 4: OS-specific: /etc/timezone on Unix
-    if (os.path.exists("/etc/timezone")):
+    if os.path.exists("/etc/timezone"):
         tz_value = False
         try:
             f = open("/etc/timezone")
@@ -897,7 +771,7 @@ def detect_server_timezone():
             f.close()
         sources.append((tz_value,"/etc/timezone file"))
     # Option 5: timezone info from registry on Win32
-    if (sys.platform == "win32"):
+    if sys.platform == "win32":
         # Timezone info is stored in windows registry.
         # However this is not likely to work very well as the standard name
         # of timezones in windows is rarely something that is known to pytz.
@@ -1135,5 +1009,90 @@ class UnquoteEvalContext(defaultdict):
 
     def __missing__(self, key):
         return unquote(key)
+
+
+class mute_logger(object):
+    """Temporary suppress the logging.
+    Can be used as context manager or decorator.
+
+        @mute_logger('openerp.plic.ploc')
+        def do_stuff():
+            blahblah()
+
+        with mute_logger('openerp.foo.bar'):
+            do_suff()
+
+    """
+    def __init__(self, *loggers):
+        self.loggers = loggers
+
+    def filter(self, record):
+        return 0
+
+    def __enter__(self):
+        for logger in self.loggers:
+            logging.getLogger(logger).addFilter(self)
+
+    def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
+        for logger in self.loggers:
+            logging.getLogger(logger).removeFilter(self)
+
+    def __call__(self, func):
+        @wraps(func)
+        def deco(*args, **kwargs):
+            with self:
+                return func(*args, **kwargs)
+        return deco
+
+_ph = object()
+class CountingStream(object):
+    """ Stream wrapper counting the number of element it has yielded. Similar
+    role to ``enumerate``, but for use when the iteration process of the stream
+    isn't fully under caller control (the stream can be iterated from multiple
+    points including within a library)
+
+    ``start`` allows overriding the starting index (the index before the first
+    item is returned).
+
+    On each iteration (call to :meth:`~.next`), increases its :attr:`~.index`
+    by one.
+
+    .. attribute:: index
+
+        ``int``, index of the last yielded element in the stream. If the stream
+        has ended, will give an index 1-past the stream
+    """
+    def __init__(self, stream, start=-1):
+        self.stream = iter(stream)
+        self.index = start
+        self.stopped = False
+    def __iter__(self):
+        return self
+    def next(self):
+        if self.stopped: raise StopIteration()
+        self.index += 1
+        val = next(self.stream, _ph)
+        if val is _ph:
+            self.stopped = True
+            raise StopIteration()
+        return val
+
+def stripped_sys_argv(*strip_args):
+    """Return sys.argv with some arguments stripped, suitable for reexecution or subprocesses"""
+    strip_args = sorted(set(strip_args) | set(['-s', '--save', '-d', '--database', '-u', '--update', '-i', '--init']))
+    assert all(config.parser.has_option(s) for s in strip_args)
+    takes_value = dict((s, config.parser.get_option(s).takes_value()) for s in strip_args)
+
+    longs, shorts = list(tuple(y) for _, y in groupby(strip_args, lambda x: x.startswith('--')))
+    longs_eq = tuple(l + '=' for l in longs if takes_value[l])
+
+    args = sys.argv[:]
+
+    def strip(args, i):
+        return args[i].startswith(shorts) \
+            or args[i].startswith(longs_eq) or (args[i] in longs) \
+            or (i >= 1 and (args[i - 1] in strip_args) and takes_value[args[i - 1]])
+
+    return [x for i, x in enumerate(args) if not strip(args, i)]
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
