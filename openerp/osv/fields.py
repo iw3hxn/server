@@ -1260,51 +1260,87 @@ class related(function):
     """
 
     def _fnct_search(self, tobj, cr, uid, obj=None, name=None, domain=None, context=None):
-        # assume self._arg = ('foo', 'bar', 'baz')
-        # domain = [(name, op, val)]   =>   search [('foo.bar.baz', op, val)]
-        field = '.'.join(self._arg)
-        return map(lambda x: (field, x[1], x[2]), domain)
+        self._field_get2(cr, uid, obj, context)
+        i = len(self._arg)-1
+        sarg = name
+        while i>0:
+            if type(sarg) in [type([]), type( (1,) )]:
+                where = [(self._arg[i], 'in', sarg)]
+            else:
+                where = [(self._arg[i], '=', sarg)]
+            if domain:
+                where = map(lambda x: (self._arg[i],x[1], x[2]), domain)
+                domain = []
+            sarg = obj.pool.get(self._relations[i]['object']).search(cr, uid, where, context=context)
+            i -= 1
+        return [(self._arg[0], 'in', sarg)]
 
     def _fnct_write(self,obj,cr, uid, ids, field_name, values, args, context=None):
-        if isinstance(ids, (int, long)):
-            ids = [ids]
-        for record in obj.browse(cr, uid, ids, context=context):
-            # traverse all fields except the last one
-            for field in self.arg[:-1]:
-                record = record[field] or False
-                if not record:
+        self._field_get2(cr, uid, obj, context=context)
+        if type(ids) != type([]):
+            ids=[ids]
+        objlst = obj.browse(cr, uid, ids)
+        for data in objlst:
+            t_data = data
+            for i in range(len(self.arg) - 1):
+                if not t_data[self.arg[i]]:
                     break
-                elif isinstance(record, list):
-                    # record is the result of a one2many or many2many field
-                    record = record[0]
-            if record:
-                # write on the last field
-                record.write({self.arg[-1]: values})
+                if self._relations[i]['type'] in ('one2many', 'many2many'):
+                    t_data = t_data[self.arg[i]][0]
+                else:
+                    t_data = t_data[self.arg[i]]
+            else:
+                t_id = t_data.id
+                model = obj.pool.get(self._relations[-1]['object'])
+                model.write(cr, uid, [t_id], {args[-1]: values}, context=context)
 
     def _fnct_read(self, obj, cr, uid, ids, field_name, args, context=None):
-        res = {}
-        for record in obj.browse(cr, SUPERUSER_ID, ids, context=context):
-            value = record
-            for field in self.arg:
-                if isinstance(value, list):
-                    value = value[0]
-                value = value[field] or False
-                if not value:
+        self._field_get2(cr, uid, obj, context)
+        if not ids: return {}
+        relation = obj._name
+        if self._type in ('one2many', 'many2many'):
+            res = dict([(i, []) for i in ids])
+        else:
+            res = {}.fromkeys(ids, False)
+
+        objlst = obj.browse(cr, 1, ids, context=context)
+        for data in objlst:
+            if not data:
+                continue
+            t_data = data
+            relation = obj._name
+            for i in range(len(self.arg)):
+                field_detail = self._relations[i]
+                relation = field_detail['object']
+                try:
+                    if not t_data[self.arg[i]]:
+                        t_data = False
+                        break
+                except:
+                    t_data = False
                     break
-            res[record.id] = value
-
-        if self._type == 'many2one':
-            # res[id] is a browse_record or False; convert it to (id, name) or False.
-            # Perform name_get as root, as seeing the name of a related object depends on
-            # access right of source document, not target, so user may not have access.
-            value_ids = list(set(value.id for value in res.itervalues() if value))
-            value_name = dict(obj.pool.get(self._obj).name_get(cr, SUPERUSER_ID, value_ids, context=context))
-            res = dict((id, value and (value.id, value_name[value.id])) for id, value in res.iteritems())
-
+                if field_detail['type'] in ('one2many', 'many2many') and i != len(self.arg) - 1:
+                    t_data = t_data[self.arg[i]][0]
+                elif t_data:
+                    t_data = t_data[self.arg[i]]
+            if type(t_data) == type(objlst[0]):
+                res[data.id] = t_data.id
+            elif t_data:
+                res[data.id] = t_data
+        if self._type=='many2one':
+            ids = filter(None, res.values())
+            if ids:
+                # name_get as root, as seeing the name of a related
+                # object depends on access right of source document,
+                # not target, so user may not have access.
+                ng = dict(obj.pool.get(self._obj).name_get(cr, 1, ids, context=context))
+                for r in res:
+                    if res[r]:
+                        res[r] = (res[r], ng[res[r]])
         elif self._type in ('one2many', 'many2many'):
-            # res[id] is a list of browse_record or False; convert it to a list of ids
-            res = dict((id, value and map(int, value) or []) for id, value in res.iteritems())
-
+            for r in res:
+                if res[r]:
+                    res[r] = [x.id for x in res[r]]
         return res
 
     def __init__(self, *arg, **args):
