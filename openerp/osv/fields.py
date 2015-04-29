@@ -343,7 +343,7 @@ class date(_column):
         if context and context.get('tz'):
             tz_name = context['tz']  
         else:
-            tz_name = model.pool.get('res.users').read(cr, SUPERUSER_ID, uid, ['tz'])['tz']
+            tz_name = model.pool.get('res.users').read(cr, SUPERUSER_ID, uid, ['context_tz'])['context_tz']
         if tz_name:
             try:
                 utc = pytz.timezone('UTC')
