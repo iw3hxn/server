@@ -340,10 +340,10 @@ class date(_column):
         """
         today = timestamp or DT.datetime.now()
         context_today = None
-        if context and context.get('tz'):
+        if context and context.get('context_tz'):
             try:
                 utc = pytz.timezone('UTC')
-                context_tz = pytz.timezone(context['tz'])
+                context_tz = pytz.timezone(context['context_tz'])
                 utc_today = utc.localize(today, is_dst=False) # UTC = no DST
                 context_today = utc_today.astimezone(context_tz)
             except Exception:
@@ -383,11 +383,11 @@ class datetime(_column):
                     timezone
         """
         assert isinstance(timestamp, DT.datetime), 'Datetime instance expected'
-        if context and context.get('tz'):
-            tz_name = context['tz']  
+        if context and context.get('context_tz'):
+            tz_name = context['context_tz']  
         else:
             registry = openerp.modules.registry.RegistryManager.get(cr.dbname)
-            tz_name = registry.get('res.users').read(cr, SUPERUSER_ID, uid, ['tz'])['tz']
+            tz_name = registry.get('res.users').browse(cr, SUPERUSER_ID, uid, context).context_tz
         if tz_name:
             try:
                 utc = pytz.timezone('UTC')
