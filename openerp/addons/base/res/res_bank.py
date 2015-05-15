@@ -226,6 +226,19 @@ class res_partner_bank(osv.osv):
             result['state_id'] = part.address and part.address[0].state_id and part.address[0].state_id.id or False
         return {'value': result}
 
+    def create(self, cr, uid, vals, context=None):
+        if context is None:
+            context = self.pool['res.users'].context_get(cr, uid)
+
+        if 'partner_id' in vals:
+            res_partner_obj = self.pool['res.partner']
+
+            partner = res_partner_obj.browse(cr, uid, vals['partner_id'], context=context)
+            if partner.id == partner.company_id.partner_id.id:
+                vals.update({'company_id': partner.company_id.id})
+
+        return super(res_partner_bank, self).create(cr, uid, vals, context=context)
+
 res_partner_bank()
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
