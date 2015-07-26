@@ -5135,6 +5135,10 @@ msgstr "Affero GPL-3"
 
 #. module: base
 #: field:ir.sequence,number_next:0
+msgid "Next Number"
+msgstr "Forzo il Numero Successivo"
+
+#. module: base
 #: field:ir.sequence,number_next_actual:0
 msgid "Next Number"
 msgstr "Numero Successivo"
@@ -7346,7 +7350,7 @@ msgstr "Bhutan"
 #. module: base
 #: help:ir.sequence,number_next:0
 msgid "Next number of this sequence"
-msgstr "Numero successivo di questa sequenza"
+msgstr "Scrivendo qui un numero verrà applicato come prossimo Numero per questa sequenza"
 
 #. module: base
 #: model:res.partner.category,name:base.res_partner_category_11
