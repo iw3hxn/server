@@ -379,7 +379,7 @@
                             </field>
                             <group  groups="base.group_extended">
                                     <separator colspan="4" string="Categories"/>
-                                    <field  colspan="4" name="category_id" nolabel="1"/>
+                                    <field  colspan="4" name="category_id" nolabel="1" widget="many2many_checkboxes"/>
                             </group>
                         </page>
                         <page string="Sales &amp; Purchases">
