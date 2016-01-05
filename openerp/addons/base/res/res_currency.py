@@ -190,7 +190,11 @@ class res_currency(osv.osv):
             raise osv.except_osv(_('Error'), _('No rate found \n' \
                     'for the currency: %s \n' \
                     'at the date: %s') % (currency_symbol, date))
-        return to_currency.rate/from_currency.rate
+        if to_currency:
+            res = to_currency.rate / from_currency.rate
+        else:
+            res = 1
+        return res
 
     def compute(self, cr, uid, from_currency_id, to_currency_id, from_amount,
                 round=True, currency_rate_type_from=False, currency_rate_type_to=False, context=None):
