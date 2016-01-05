@@ -74,8 +74,8 @@ import threading
 from inspect import currentframe
 
 import re
-re_from = re.compile('.* from "?([a-zA-Z_0-9]+)"? .*$');
-re_into = re.compile('.* into "?([a-zA-Z_0-9]+)"? .*$');
+re_from = re.compile('.* from "?([a-zA-Z_0-9]+)"? .*$')
+re_into = re.compile('.* into "?([a-zA-Z_0-9]+)"? .*$')
 
 sql_counter = 0
 
@@ -163,7 +163,7 @@ class Cursor(object):
         self.sql_log_count = 0
         self.__closed = True    # avoid the call of close() (by __del__) if an exception
                                 # is raised by any of the following initialisations
-        self._pool = pool
+        self.__pool = pool
         self.dbname = dbname
 
         # Whether to enable snapshot isolation level for this cursor.
@@ -181,6 +181,8 @@ class Cursor(object):
         self.__closer = False
 
         self._default_log_exceptions = True
+
+        self.cache = {}
 
     def __del__(self):
         if not self.__closed and not self._cnx.closed:
@@ -203,6 +205,9 @@ class Cursor(object):
             _logger.warning(query)
             _logger.warning("SQL queries cannot contain %d or %f anymore. "
                          "Use only %s")
+        if params and not isinstance(params, (tuple, list, dict)):
+            _logger.error("SQL query parameters should be a tuple, list or dict; got %r", params)
+            raise ValueError("SQL query parameters should be a tuple, list or dict; got %r" % (params,))
 
         if self.sql_log:
             now = mdt.now()
@@ -211,11 +216,11 @@ class Cursor(object):
             params = params or None
             res = self._obj.execute(query, params)
         except psycopg2.ProgrammingError, pe:
-            if (self._default_log_exceptions if log_exceptions is None else log_exceptions):
+            if self._default_log_exceptions if log_exceptions is None else log_exceptions:
                 _logger.error("Programming error: %s, in query %s", pe, query)
             raise
         except Exception:
-            if (self._default_log_exceptions if log_exceptions is None else log_exceptions):
+            if self._default_log_exceptions if log_exceptions is None else log_exceptions:
                 _logger.exception("bad query: %s", self._obj.query or query)
             raise
 
@@ -279,6 +284,8 @@ class Cursor(object):
         if not self._obj:
             return
 
+        del self.cache
+
         if self.sql_log:
             self.__closer = frame_codeinfo(currentframe(),3)
         self.print_log()
@@ -302,7 +309,7 @@ class Cursor(object):
             chosen_template = tools.config['db_template']
             templates_list = tuple(set(['template0', 'template1', 'postgres', chosen_template]))
             keep_in_pool = self.dbname not in templates_list
-            self._pool.give_back(self._cnx, keep_in_pool=keep_in_pool)
+            self.__pool.give_back(self._cnx, keep_in_pool=keep_in_pool)
 
     @check
     def autocommit(self, on):
@@ -400,15 +407,15 @@ class ConnectionPool(object):
 
         for i, (cnx, used) in enumerate(self._connections):
             if not used and dsn_are_equals(cnx.dsn, dsn):
-                self._connections.pop(i)
                 try:
                     cnx.reset()
                 except psycopg2.OperationalError:
-                    self._debug('Cannot reset connection at index %d: %r, removing it', i, cnx.dsn)
+                    self._debug('Cannot reset connection at index %d: %r', i, cnx.dsn)
                     # psycopg2 2.4.4 and earlier do not allow closing a closed connection
                     if not cnx.closed:
                         cnx.close()
                     continue
+                self._connections.pop(i)
                 self._connections.append((cnx, True))
                 self._debug('Existing connection found at index %d', i)
 
@@ -465,12 +472,12 @@ class Connection(object):
 
     def __init__(self, pool, dbname):
         self.dbname = dbname
-        self._pool = pool
+        self.__pool = pool
 
     def cursor(self, serialized=True):
         cursor_type = serialized and 'serialized ' or ''
         _logger.debug('create %scursor to %r', cursor_type, self.dbname)
-        return Cursor(self._pool, self.dbname, serialized=serialized)
+        return Cursor(self.__pool, self.dbname, serialized=serialized)
 
     # serialized_cursor is deprecated - cursors are serialized by default
     serialized_cursor = cursor
