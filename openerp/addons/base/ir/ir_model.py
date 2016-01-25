@@ -485,15 +485,16 @@ class ir_model_access(osv.osv):
         """
         assert access_mode in ['read','write','create','unlink'], 'Invalid access mode: %s' % access_mode
         cr.execute('''SELECT
-                        g.name
+                        c.name, g.name
                       FROM
                         ir_model_access a
                         JOIN ir_model m ON (a.model_id=m.id)
                         JOIN res_groups g ON (a.group_id=g.id)
+                        LEFT JOIN ir_module_category c ON (c.id=g.category_id)
                       WHERE
                         m.model=%s AND
                         a.perm_''' + access_mode, (model_name,))
-        return [x[0] for x in cr.fetchall()]
+        return [('%s/%s' % x) if x[0] else x[1] for x in cr.fetchall()]
 
     @tools.ormcache()
     def check(self, cr, uid, model, mode='read', raise_exception=True, context=None):
