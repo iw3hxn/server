@@ -20,6 +20,18 @@ msgstr ""
 "X-Project-Style: gnome\n"
 
 #. module: base
+#: code:addons/osv.py:128
+#, python-format
+msgid "Database not ready"
+msgstr "Database non pronto"
+
+#. module: base
+#: code:addons/osv.py:128
+#, python-format
+msgid "Currently, this database is not fully loaded and can not be used."
+msgstr "Attualmente, questo database si sta avviando e non può essere usato, pazientate un attimo."
+
+#. module: base
 #: model:res.country,name:base.sh
 msgid "Saint Helena"
 msgstr "Sant'Elena"
