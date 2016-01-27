@@ -125,7 +125,7 @@ class object_proxy(object):
             while True:
                 try:
                     if pooler.get_pool(dbname)._init:
-                        raise except_osv('Database not ready', 'Currently, this database is not fully loaded and can not be used.')
+                        raise except_osv(_('Database not ready', 'Currently, this database is not fully loaded and can not be used.'))
                     return f(self, dbname, *args, **kwargs)
                 except OperationalError, e:
                     # Automatically retry the typical transaction serialization errors

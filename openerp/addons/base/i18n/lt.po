@@ -17,6 +17,12 @@ msgstr ""
 "X-Generator: Launchpad (build 16681)\n"
 
 #. module: base
+#: code:addons/osv.py:128
+#, python-format
+msgid "Database not ready', 'Currently, this database is not fully loaded and can not be used."
+msgstr "Database non pronto', 'Attualmente, questo database si sta avvianda e non può essere usato, pazientate un attimo."
+
+#. module: base
 #: model:res.country,name:base.sh
 msgid "Saint Helena"
 msgstr "Šv. Elenos sala"
