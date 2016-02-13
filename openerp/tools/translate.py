@@ -33,6 +33,7 @@ import logging
 import tarfile
 import tempfile
 import threading
+from babel.messages import extract
 from os.path import join
 
 from datetime import datetime
@@ -43,6 +44,8 @@ import misc
 from misc import UpdateableStr
 from misc import SKIPPED_ELEMENT_TYPES
 import osutil
+
+WEB_TRANSLATION_COMMENT = "openerp-web"
 
 _logger = logging.getLogger(__name__)
 
@@ -895,6 +898,32 @@ def trans_generate(lang, modules, cr):
                 push_translation(module, terms_type, frelativepath, code_line, encode(src))
                 code_line += i.group(1).count('\n')
                 code_offset = i.end() # we have counted newlines up to the match end
+
+    def verified_module_filepaths(fname, path, root):
+        fabsolutepath = join(root, fname)
+        frelativepath = fabsolutepath[len(path):]
+        display_path = "addons%s" % frelativepath
+        module = get_module_from_path(fabsolutepath)
+        if ('all' in modules or module in modules) and module in installed_modules:
+            return module, fabsolutepath, frelativepath, display_path
+        return None, None, None, None
+
+    def babel_extract_terms(fname, path, root, extract_method="python", trans_type='code',
+                            extra_comments=None, extract_keywords={'_': None}):
+        module, fabsolutepath, _, display_path = verified_module_filepaths(fname, path, root)
+        # extra_comments = extra_comments or []
+        if module:
+            src_file = open(fabsolutepath, 'r')
+            try:
+                for extracted in extract.extract(extract_method, src_file, keywords=extract_keywords):
+                    # Babel 0.9.6 yields lineno, message, comments
+                    # Babel 1.3 yields lineno, message, comments, context
+                    lineno, message, comments = extracted[:3]
+                    push_translation(module, trans_type, display_path, lineno, encode(message))
+            except Exception:
+                _logger.exception('Failed to extract terms from {absolutepath}'.format(absolutepath=fabsolutepath))
+            finally:
+                src_file.close()
 
     for path in path_list:
         _logger.debug("Scanning files of modules at %s", path)
