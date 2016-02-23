@@ -20,6 +20,9 @@
 #
 ##############################################################################
 
+#.apidoc title: Common Services: netsvc
+#.apidoc module-mods: member-order: bysource
+
 import errno
 import logging
 import logging.handlers
@@ -33,12 +36,18 @@ import time
 import types
 from pprint import pformat
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
 # TODO modules that import netsvc only for things from loglevels must be changed to use loglevels.
 from loglevels import *
 import tools
 import openerp
 
 _logger = logging.getLogger(__name__)
+
 
 def close_socket(sock):
     """ Closes a socket instance cleanly
@@ -54,7 +63,7 @@ def close_socket(sock):
         # of the other side (or something), see
         # http://bugs.python.org/issue4397
         # note: stdlib fixed test, not behavior
-        if e.errno != errno.ENOTCONN or platform.system() != 'Darwin':
+        if e.errno != errno.ENOTCONN or platform.system() not in ['Darwin', 'Windows']:
             raise
     sock.close()
 
@@ -67,9 +76,9 @@ def abort_response(dummy_1, description, dummy_2, details):
     raise openerp.osv.osv.except_osv(description, details)
 
 class Service(object):
-    """ Base class for *Local* services
-
-        Functionality here is trusted, no authentication.
+    """ Base class for Local services
+    Functionality here is trusted, no authentication.
+    Workflow engine and reports subclass this.
     """
     _services = {}
     def __init__(self, name):
@@ -86,12 +95,12 @@ class Service(object):
             cls._services.pop(name)
 
 def LocalService(name):
-  # Special case for addons support, will be removed in a few days when addons
-  # are updated to directly use openerp.osv.osv.service.
-  if name == 'object_proxy':
-      return openerp.osv.osv.service
+    # Special case for addons support, will be removed in a few days when addons
+    # are updated to directly use openerp.osv.osv.service.
+    if name == 'object_proxy':
+        return openerp.osv.osv.service
 
-  return Service._services[name]
+    return Service._services[name]
 
 class ExportService(object):
     """ Proxy for exported services.
@@ -145,8 +154,13 @@ class ColoredFormatter(DBFormatter):
         record.levelname = COLOR_PATTERN % (30 + fg_color, 40 + bg_color, record.levelname)
         return DBFormatter.format(self, record)
 
-
+_logger_init = False
 def init_logger():
+    global _logger_init
+    if _logger_init:
+        return
+    _logger_init = True
+
     from tools.translate import resetlocale
     resetlocale()
 
@@ -182,11 +196,19 @@ def init_logger():
         # Normal Handler on standard output
         handler = logging.StreamHandler(sys.stdout)
 
-    if isinstance(handler, logging.StreamHandler) and os.isatty(handler.stream.fileno()):
+    # Check that handler.stream has a fileno() method: when running OpenERP
+    # behind Apache with mod_wsgi, handler.stream will have type mod_wsgi.Log,
+    # which has no fileno() method. (mod_wsgi.Log is what is being bound to
+    # sys.stderr when the logging.StreamHandler is being constructed above.)
+    if isinstance(handler, logging.StreamHandler) \
+        and hasattr(handler.stream, 'fileno') \
+        and os.isatty(handler.stream.fileno()):
         formatter = ColoredFormatter(format)
     else:
         formatter = DBFormatter(format)
     handler.setFormatter(formatter)
+
+    logging.getLogger().addHandler(handler)
 
     # Configure handlers
     default_config = [
@@ -238,9 +260,9 @@ def init_logger():
 # server intended to test it.
 def init_alternative_logger():
     class H(logging.Handler):
-      def emit(self, record):
-        if record.levelno > 20:
-          print record.levelno, record.pathname, record.msg
+        def emit(self, record):
+            if record.levelno > 20:
+                print record.levelno, record.pathname, record.msg
     handler = H()
     # Add the handler to the 'openerp' logger.
     logger = logging.getLogger('openerp')
@@ -354,6 +376,9 @@ def dispatch_rpc(service_name, method, params):
         rpc_response_flag = rpc_response.isEnabledFor(logging.DEBUG)
         if rpc_request_flag or rpc_response_flag:
             start_time = time.time()
+            start_rss, start_vms = 0, 0
+            if psutil:
+                start_rss, start_vms = psutil.Process(os.getpid()).get_memory_info()
             if rpc_request and rpc_response_flag:
                 log(rpc_request,logging.DEBUG,'%s.%s'%(service_name,method), replace_request_password(params))
 
@@ -361,6 +386,10 @@ def dispatch_rpc(service_name, method, params):
 
         if rpc_request_flag or rpc_response_flag:
             end_time = time.time()
+            end_rss, end_vms = 0, 0
+            if psutil:
+                end_rss, end_vms = psutil.Process(os.getpid()).get_memory_info()
+            logline = '%s.%s time:%.3fs mem: %sk -> %sk (diff: %sk)' % (service_name, method, end_time - start_time, start_vms / 1024, end_vms / 1024, (end_vms - start_vms)/1024)
             if rpc_response_flag:
                 log(rpc_response,logging.DEBUG,'%s.%s time:%.3fs '%(service_name,method,end_time - start_time), result)
             else:
@@ -374,11 +403,11 @@ def dispatch_rpc(service_name, method, params):
     except openerp.exceptions.Warning:
         raise
     except openerp.exceptions.DeferredException, e:
-        _logger.error(tools.exception_to_unicode(e))
+        _logger.exception(tools.exception_to_unicode(e))
         post_mortem(e.traceback)
         raise
     except Exception, e:
-        _logger.error(tools.exception_to_unicode(e))
+        _logger.exception(tools.exception_to_unicode(e))
         post_mortem(sys.exc_info())
         raise
 
