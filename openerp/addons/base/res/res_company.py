@@ -22,10 +22,11 @@
 from osv import osv
 from osv import fields
 import os
-import tools
-from tools.translate import _
-from tools.safe_eval import safe_eval as eval
-
+from openerp import SUPERUSER_ID, tools
+from openerp.osv import fields, osv
+from openerp.tools.translate import _
+from openerp.tools.safe_eval import safe_eval as eval
+  
 class multi_company_default(osv.osv):
     """
     Manage multi company default value
@@ -170,7 +171,7 @@ class res_company(osv.osv):
             # select only the currently visible companies (according to rules,
             # which are probably to allow to see the child companies) even if
             # she belongs to some other companies.
-            user = self.pool.get('res.users').browse(cr, 1, uid, context=context)
+            user = self.pool.get('res.users').browse(cr, SUPERUSER_ID, uid, context=context)
             cmp_ids = list(set([user.company_id.id] + [cmp.id for cmp in user.company_ids]))
             return cmp_ids
         return super(res_company, self)._search(cr, uid, args, offset=offset, limit=limit, order=order,
@@ -228,6 +229,7 @@ class res_company(osv.osv):
         if not vals.get('name', False) or vals.get('partner_id', False):
             self.cache_restart(cr)
             return super(res_company, self).create(cr, uid, vals, context=context)
+        context.update({'import': True}) # need to be set for create company without address
         obj_partner = self.pool.get('res.partner')
         partner_id = obj_partner.create(cr, uid, {'name': vals['name']}, context=context)
         vals.update({'partner_id': partner_id})
