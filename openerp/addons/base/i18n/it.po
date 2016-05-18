@@ -15728,3 +15728,33 @@ msgstr ""
 #: selection:base.language.install,lang:0
 msgid "Russian / русский язык"
 msgstr "Russian / русский язык"
+
+#. module: base
+#: code:addons/base/ir/ir_model.py:548
+#, python-format
+msgid "SSorry, you are not allowed to access this document."
+msgstr "Scusa, non sei autorizzato a leggere questo tipo di documento."
+
+#. module: base
+#: code:addons/base/ir/ir_model.py:548
+#, python-format
+msgid "Sorry, you are not allowed to modify this kind of document."
+msgstr "Scusa, non sei autorizzato a modificare questo tipo di documento."
+
+#. module: base
+#: code:addons/base/ir/ir_model.py:548
+#, python-format
+msgid "Sorry, you are not allowed to create this kind of document."
+msgstr "Scusa, non sei autorizzato a creare questo tipo di documento."
+
+#. module: base
+#: code:addons/base/ir/ir_model.py:548
+#, python-format
+msgid "Sorry, you are not allowed to delete this kind of document."
+msgstr "Scusa, non sei autorizzato a cancellare questo tipo di documento."
+
+#. module: base
+#: code:addons/base/ir/ir_model.py:552
+#, python-format
+msgid "Only users with the following access level are currently allowed to do that"
+msgstr "Solo gli utenti appertenenti ai seguenti gruppi possono farlo"

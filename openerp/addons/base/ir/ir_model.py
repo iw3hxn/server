@@ -544,7 +544,7 @@ class ir_model_access(osv.osv):
             msg_heads = {
                 # Messages are declared in extenso so they are properly exported in translation terms
                 'read': _("Sorry, you are not allowed to access this document."),
-                'write':  _("Sorry, you are not allowed to modify this document."),
+                'write': _("Sorry, you are not allowed to modify this document."),
                 'create': _("Sorry, you are not allowed to create this kind of document."),
                 'unlink': _("Sorry, you are not allowed to delete this document."),
             }
