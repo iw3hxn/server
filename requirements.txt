@@ -40,5 +40,4 @@ wsgiref==0.1.2
 xlwt==0.7.5
 Genshi == 0.6
 pyxb
-unicode
-
+unidecode
