@@ -41,3 +41,7 @@ xlwt==0.7.5
 Genshi == 0.6
 pyxb
 unidecode
+requests==2.6.0
+pyvies
+validate_email
+
