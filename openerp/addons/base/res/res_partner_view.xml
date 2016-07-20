@@ -334,7 +334,7 @@
                             <field domain="[('domain', '=', 'partner')]" name="title" size="0" groups="base.group_extended"/>
                             <field name="lang"/>
                         </group>
-                        <group colspan="1" col="2">
+                        <group colspan="1" col="2" name="customer_supplier">
                             <field name="customer" select="1"/>
                             <field name="supplier"/>
 <!--                            <field name="employee"/>-->
