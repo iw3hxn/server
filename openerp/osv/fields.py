@@ -383,8 +383,8 @@ class datetime(_column):
                     timezone
         """
         assert isinstance(timestamp, DT.datetime), 'Datetime instance expected'
-        if context and context.get('context_tz'):
-            tz_name = context['context_tz']  
+        if context and context.get('tz'):
+            tz_name = context['tz']
         else:
             registry = openerp.modules.registry.RegistryManager.get(cr.dbname)
             tz_name = registry.get('res.users').browse(cr, SUPERUSER_ID, uid, context).context_tz
@@ -400,6 +400,39 @@ class datetime(_column):
                               exc_info=True)
         return timestamp
 
+    @staticmethod
+    def context_today(model, cr, uid, context=None, timestamp=None):
+        """Returns the current date as seen in the client's timezone
+           in a format fit for date fields.
+           This method may be passed as value to initialize _defaults.
+
+           :param Model model: model (osv) for which the date value is being
+                               computed - technical field, currently ignored,
+                               automatically passed when used in _defaults.
+           :param datetime timestamp: optional datetime value to use instead of
+                                      the current date and time (must be a
+                                      datetime, regular dates can't be converted
+                                      between timezones.)
+           :param dict context: the 'tz' key in the context should give the
+                                name of the User/Client timezone (otherwise
+                                UTC is used)
+           :rtype: str
+        """
+        today = timestamp or DT.datetime.now()
+        context_today = None
+        if context and context.get('tz'):
+            try:
+                utc = pytz.timezone('UTC')
+                context_tz = pytz.timezone(context['tz'])
+                utc_today = utc.localize(today, is_dst=False)  # UTC = no DST
+                context_today = utc_today.astimezone(context_tz)
+            except Exception:
+                _logger.debug("failed to compute context/client-specific today date, "
+                              "using the UTC value for `today`",
+                              exc_info=True)
+        return (context_today or today).strftime(tools.DEFAULT_SERVER_DATETIME_FORMAT)
+
+
 class time(_column):
     _type = 'time'
     _deprecated = True
@@ -413,6 +446,7 @@ class time(_column):
         """
         return DT.datetime.now().strftime(
             tools.DEFAULT_SERVER_TIME_FORMAT)
+
 
 class binary(_column):
     _type = 'binary'
