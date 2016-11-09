@@ -94,16 +94,20 @@ class report_xml(osv.osv):
         cr.execute("SELECT * FROM ir_act_report_xml WHERE auto=%s ORDER BY id", (True,))
         result = cr.dictfetchall()
         svcs = netsvc.Service._services
-        for r in result:
-            if svcs.has_key('report.'+r['report_name']):
+        for res in result:
+            if svcs.has_key('report.' + res['report_name']):
                 continue
-            if r['report_rml'] or r['report_rml_content_data']:
-                report_sxw('report.'+r['report_name'], r['model'],
-                        opj('addons',r['report_rml'] or '/'), header=r['header'])
-            if r['report_xsl']:
-                report_rml('report.'+r['report_name'], r['model'],
-                        opj('addons',r['report_xml']),
-                        r['report_xsl'] and opj('addons',r['report_xsl']))
+            if res['report_rml'] or res['report_rml_content_data']:
+                report_sxw('report.' + res['report_name'], res['model'],
+                           opj('addons', res['report_rml'] or '/'), header=res['header'])
+            if res['report_xsl']:
+                try:
+                    report_rml('report.' + res['report_name'], res['model'],
+                               opj('addons', res['report_xml']),
+                               res['report_xsl'] and opj('addons', res['report_xsl']))
+                except Exception as e:
+                    _logger.exception('Failed register Report {name} on model {model}'.format(name=res.get('report_name', 'No name'), model=res.get('model', 'No model')))
+                    # _logger.exception('Exception : {e}'.format(e=e))
 
     _name = 'ir.actions.report.xml'
     _table = 'ir_act_report_xml'
