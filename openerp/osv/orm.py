@@ -2217,6 +2217,14 @@ class BaseModel(object):
             return len(res)
         return res
 
+    def search_browse(self, cr, user, args, offset=0, limit=None, order=None, context=None, count=False):
+        if not context:
+            context = {}
+        res = self.search(cr, user, args, offset=0, limit=None, order=None, context=None, count=False)
+        if len(res)==1:
+            return self.browse(cr, user, res[0], context)
+        return self.browse(cr, user, res, context)
+
     def search(self, cr, user, args, offset=0, limit=None, order=None, context=None, count=False):
         """
         Search for records based on a search domain.
@@ -3488,6 +3496,7 @@ class BaseModel(object):
                 if rule_clause:
                     cr.execute(query, [tuple(sub_ids)] + rule_params)
                     if cr.rowcount != len(sub_ids):
+                        print query
                         raise except_orm(_('AccessError'),
                                          _('Operation prohibited by access rules, or performed on an already deleted document (Operation: read, Document type: %s).')
                                          % (self._description,))
