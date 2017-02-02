@@ -1822,10 +1822,15 @@ class BaseModel(object):
             else:
                 cr.execute('select name, model from ir_ui_view where (id=%s or inherit_id=%s) and arch like %s', (view_id, view_id, '%%%s%%' % field))
                 res = cr.fetchall()[:]
-                model = res[0][1]
-                res.insert(0, ("Can't find field '%s' in the following view parts composing the view of object model '%s':" % (field, model), None))
-                msg = "\n * ".join([r[0] for r in res])
-                msg += "\n\nEither you wrongly customized this view, or some modules bringing those views are not compatible with your current data model"
+                if res:
+                    model = res[0][1]
+                    res.insert(0, _(u"Can't find field '%s' in the following view parts composing the view of object model '%s':" % (field, model)))
+                    msg = "\n * ".join([r[0] for r in res])
+                    msg += "\n\nEither you wrongly customized this view, or some modules bringing those views are not compatible with your current data model"
+                else:
+                    res.insert(0, _(u"Can't find field '{field}' in the following view parts:".format(field=field)))
+                    msg = "\n * ".join([r[0] for r in res])
+                    msg += "\n\nEither you wrongly customized this view, or some modules bringing those views are not compatible with your current data model"
                 _logger.error(msg)
                 raise except_orm('View error', msg)
         return arch, fields
