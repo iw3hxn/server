@@ -1800,8 +1800,11 @@ class BaseModel(object):
         fields = {}
         if node.tag == 'diagram':
             if node.getchildren()[0].tag == 'node':
-                node_fields = self.pool.get(node.getchildren()[0].get('object')).fields_get(cr, user, None, context)
+                node_model = self.pool.get(node.getchildren()[0].get('object'))
+                node_fields = node_model.fields_get(cr, user, None, context)
                 fields.update(node_fields)
+                if not node.get("create") and not node_model.check_access_rights(cr, user, 'create', raise_exception=False):
+                    node.set("create", 'false')
             if node.getchildren()[1].tag == 'arrow':
                 arrow_fields = self.pool.get(node.getchildren()[1].get('object')).fields_get(cr, user, None, context)
                 fields.update(arrow_fields)
@@ -1809,6 +1812,10 @@ class BaseModel(object):
             fields = self.fields_get(cr, user, None, context)
         fields_def = self.__view_look_dom(cr, user, node, view_id, False, fields, context=context)
         node = self._disable_workflow_buttons(cr, user, node)
+        if node.tag in ('kanban', 'tree', 'form', 'gantt'):
+            for action, operation in (('create', 'create'), ('delete', 'unlink'), ('edit', 'write')):
+                if not node.get(action) and not self.check_access_rights(cr, user, operation, raise_exception=False):
+                    node.set(action, 'false')
         arch = etree.tostring(node, encoding="utf-8").replace('\t', '')
         for k in fields.keys():
             if k not in fields_def:
@@ -1822,15 +1829,10 @@ class BaseModel(object):
             else:
                 cr.execute('select name, model from ir_ui_view where (id=%s or inherit_id=%s) and arch like %s', (view_id, view_id, '%%%s%%' % field))
                 res = cr.fetchall()[:]
-                if res:
-                    model = res[0][1]
-                    res.insert(0, _(u"Can't find field '%s' in the following view parts composing the view of object model '%s':" % (field, model)))
-                    msg = "\n * ".join([r[0] for r in res])
-                    msg += "\n\nEither you wrongly customized this view, or some modules bringing those views are not compatible with your current data model"
-                else:
-                    res.insert(0, _(u"Can't find field '{field}' in the following view parts:".format(field=field)))
-                    msg = "\n * ".join([r[0] for r in res])
-                    msg += "\n\nEither you wrongly customized this view, or some modules bringing those views are not compatible with your current data model"
+                model = res[0][1]
+                res.insert(0, ("Can't find field '%s' in the following view parts composing the view of object model '%s':" % (field, model), None))
+                msg = "\n * ".join([r[0] for r in res])
+                msg += "\n\nEither you wrongly customized this view, or some modules bringing those views are not compatible with your current data model"
                 _logger.error(msg)
                 raise except_orm('View error', msg)
         return arch, fields
