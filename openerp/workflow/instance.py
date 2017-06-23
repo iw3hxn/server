@@ -1,5 +1,6 @@
 
 import workitem
+from openerp import tools
 import logging
 _logger = logging.getLogger(__name__)
 
@@ -11,7 +12,7 @@ def create(cr, ident, wkf_id):
     id_new = cr.fetchone()[0]
     cr.execute('select * from wkf_activity where flow_start=True and wkf_id=%s', (wkf_id,))
     res = cr.dictfetchall()
-    _logger.debug('istance create: {}'.format(res))
+    _logger.debug('instance create: {}'.format(res))
     stack = []
     workitem.create(cr, res, id_new, ident, stack=stack)
     update(cr, id_new, ident)
@@ -27,7 +28,7 @@ def validate(cr, inst_id, ident, signal, force_running=False):
     cr.execute("select * from wkf_workitem where inst_id=%s", (inst_id,))
     stack = []
     result = cr.dictfetchall()
-    _logger.debug('istance validate: {}'.format(result))
+    _logger.debug('instance validate: {}'.format(result))
     for witem in result:
         stack = []
         workitem.process(cr, witem, ident, signal, force_running, stack=stack)
@@ -37,9 +38,19 @@ def validate(cr, inst_id, ident, signal, force_running=False):
 
 
 def update(cr, inst_id, ident):
-    cr.execute("select * from wkf_workitem where inst_id=%s", (inst_id,))
+    cr.execute("SELECT * FROM wkf_workitem WHERE inst_id=%s", (inst_id,))
     res = cr.dictfetchall()
-    _logger.debug('istance update: {}'.format(res))
+    _logger.debug('instance update: {}'.format(res))
+    if tools.config['log_level'] == 'debug':
+        cr.execute("SELECT name FROM wkf_activity WHERE id={}".format(res[0]['act_id']))
+        activity = cr.dictfetchone()
+        cr.execute("SELECT res_type,res_id FROM wkf_instance WHERE id={}".format(res[0]['inst_id']))
+        instance = cr.dictfetchone()
+        _logger.debug(
+            "> > > Workflow '{instance[res_type]}, {instance[res_id]}' node: '{activity[name]}'".format(
+                instance=instance, activity=activity
+            )
+        )
     for witem in res:
         stack = []
         workitem.process(cr, witem, ident, stack=stack)
