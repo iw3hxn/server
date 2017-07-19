@@ -31,6 +31,8 @@ import cProfile
 import subprocess
 import logging
 import os
+import re
+
 import socket
 import sys
 import threading
@@ -272,6 +274,19 @@ def reverse_enumerate(l):
     StopIteration
     """
     return izip(xrange(len(l)-1, -1, -1), reversed(l))
+
+email_re = re.compile(r"""
+    ([a-zA-Z][\w\.-]*[a-zA-Z0-9]     # username part
+    @                                # mandatory @ sign
+    [a-zA-Z0-9][\w\.-]*              # domain must start with a letter ... Ged> why do we include a 0-9 then?
+     \.
+     [a-z]{2,3}                      # TLD
+    )
+    """, re.VERBOSE)
+res_re = re.compile(r"\[([0-9]+)\]", re.UNICODE)
+command_re = re.compile("^Set-([a-z]+) *: *(.+)$", re.I + re.UNICODE)
+reference_re = re.compile("<.*-open(?:object|erp)-(\\d+).*@(.*)>", re.UNICODE)
+
 
 #----------------------------------------------------------
 # SMS

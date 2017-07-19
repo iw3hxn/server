@@ -485,7 +485,7 @@ class browse_record(object):
                         new_data[field_name] = result_line[field_name]
                 self._data[result_line['id']].update(new_data)
 
-        if not name in self._data[self._id]:
+        if name not in self._data[self._id]:
             # How did this happen? Could be a missing model due to custom fields used too soon, see above.
             self.__logger.error("Fields to fetch: %s, Field values: %s", field_names, field_values)
             self.__logger.error("Cached: %s, Table: %s", self._data[self._id], self._table)
@@ -585,7 +585,7 @@ def get_pg_type(f, type_override=None):
     field_type = type_override or type(f)
 
     if field_type in FIELDS_TO_PGTYPES:
-        pg_type =  (FIELDS_TO_PGTYPES[field_type], FIELDS_TO_PGTYPES[field_type])
+        pg_type = (FIELDS_TO_PGTYPES[field_type], FIELDS_TO_PGTYPES[field_type])
     elif issubclass(field_type, fields.float):
         if f.digits:
             pg_type = ('numeric', 'NUMERIC')
@@ -4094,6 +4094,8 @@ class BaseModel(object):
                 if id not in done[key]:
                     done[key][id] = True
                     todo.append(id)
+
+            _logger.debug("Store setvalues '%s'", fields_to_recompute)
             self.pool.get(object)._store_set_values(cr, user, todo, fields_to_recompute, context)
 
         wf_service = netsvc.LocalService("workflow")
