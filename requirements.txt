@@ -3,7 +3,6 @@ Jinja2==2.7.3
 Mako==1.0.0
 MarkupSafe==0.23
 pillow
-http://download.gna.org/pychart/PyChart-1.39.tar.gz#egg=PyChart
 PyYAML==3.11
 Werkzeug==0.9.6
 argparse==1.2.1
@@ -44,3 +43,5 @@ requests==2.6.0
 pyvies
 validate_email
 html2text
+https://fossies.org/linux/privat/old/PyChart-1.39.tar.gz
+
