@@ -99,7 +99,8 @@ def xmlrpc_return(start_response, service, method, params, legacy_exceptions=Fal
             response = xmlrpc_handle_exception_legacy(e)
         else:
             response = xmlrpc_handle_exception(e)
-    start_response("200 OK", [('Content-Type','text/xml'), ('Content-Length', str(len(response)))])
+
+    start_response("200 OK", [('Content-Type','text/xml'), ('Content-Length', str(len(response))), ('Access-Control-Allow-Origin', '*')])
     return [response]
 
 def xmlrpc_handle_exception(e):
@@ -162,6 +163,14 @@ def xmlrpc_handle_exception_legacy(e):
 
 def wsgi_xmlrpc_1(environ, start_response):
     """ The main OpenERP WSGI handler."""
+    # if environ['REQUEST_METHOD'] == 'OPTIONS':
+    #     response = xmlheader = "<?xml version='1.0'?>\n" # utf-8 is default
+    #
+    #     start_response("200 OK", [('Content-Type', 'text/xml'), ('Content-Length', str(len(response))),
+    #                               ('Access-Control-Allow-Origin', '*'),
+    #                               ('Access-Control-Allow-Headers', 'Content-Type')])
+    #     return [response]
+
     if environ['REQUEST_METHOD'] == 'POST' and environ['PATH_INFO'].startswith(XML_RPC_PATH_1):
         length = int(environ['CONTENT_LENGTH'])
         data = environ['wsgi.input'].read(length)
