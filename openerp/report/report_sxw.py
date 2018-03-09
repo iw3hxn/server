@@ -288,6 +288,8 @@ class rml_parse(object):
                 formatLang(value, dp='Account') -> digits=3
                 formatLang(value, digits=5, dp='Account') -> digits=5
         """
+        if not value:
+            return ''
         if digits is None:
             if dp:
                 digits = self.get_digits(dp=dp)
