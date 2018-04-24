@@ -4067,7 +4067,8 @@ class BaseModel(object):
                             position = 1
                         else:
                             cr.execute('select parent_left from '+self._table+' where id=%s', (parent_val,))
-                            position = cr.fetchone()[0] + 1
+                            parent_left = cr.fetchone()
+                            position = parent_left[0] or 0 + 1
 
                     if pleft < position <= pright:
                         raise except_orm(_('UserError'), _('Recursivity Detected.'))

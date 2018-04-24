@@ -158,12 +158,12 @@ class ir_values(osv.osv):
         'value': fields.text('Value', help="Default value (pickled) or reference to an action"),
         'value_unpickle': fields.function(_value_unpickle, fnct_inv=_value_pickle,
                                           type='text',
-                                          string='Default value or action reference'),
-        'key': fields.selection([('action','Action'),('default','Default')],
+                                          string='Default value or action reference', readonly=True),
+        'key': fields.selection([('action', 'Action'), ('default', 'Default')],
                                 'Type', size=128, select=True, required=True,
                                 help="- Action: an action attached to one slot of the given model\n"
                                      "- Default: a default value for a model field"),
-        'key2' : fields.char('Qualifier', size=128, select=True,
+        'key2': fields.char('Qualifier', size=128, select=True,
                              help="For actions, one of the possible action slots: \n"
                                   "  - client_action_multi\n"
                                   "  - client_print_multi\n"
