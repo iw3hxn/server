@@ -149,8 +149,8 @@ class object_proxy(object):
                             netsvc.abort_response(1, _('Constraint Error'), 'warning',
                                             tr(osv_pool._sql_error[key], 'sql_constraint') or inst[0])
                     if inst.pgcode in (errorcodes.NOT_NULL_VIOLATION, errorcodes.FOREIGN_KEY_VIOLATION, errorcodes.RESTRICT_VIOLATION):
-                        msg = _('The operation cannot be completed, probably due to the following:\n- deletion: you may be trying to delete a record while other records still reference it\n- creation/update: a mandatory field is not correctly set')
-                        msg += '\n {error}'.format(error=inst)
+                        msg = _(u'The operation cannot be completed, probably due to the following:\n- deletion: you may be trying to delete a record while other records still reference it\n- creation/update: a mandatory field is not correctly set')
+                        msg += u'\n {error}'.format(error=str(inst).decode('utf-8'))
                         _logger.debug("IntegrityError", exc_info=True)
                         try:
                             errortxt = inst.pgerror.replace('«','"').replace('»','"')
