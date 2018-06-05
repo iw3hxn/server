@@ -4331,7 +4331,7 @@ class BaseModel(object):
 
     def _store_get_values(self, cr, uid, ids, fields, context):
         """Returns an ordered list of fields.functions to call due to
-           an update operation on ``fields`` of records with ``ids``,
+           an update operation on `fields` of records with `ids`,
            obtained by calling the 'store' functions of these fields,
            as setup by their 'store' attribute.
 
@@ -4343,20 +4343,24 @@ class BaseModel(object):
         # use indexed names for the details of the stored_functions:
         model_name_, func_field_to_compute_, id_mapping_fnct_, trigger_fields_, priority_ = range(5)
 
-        # only keep functions that should be triggered for the ``fields``
+        # only keep functions that should be triggered for the `fields`
         # being written to.
         to_compute = [f for f in stored_functions \
-                if ((not f[trigger_fields_]) or set(fields).intersection(f[trigger_fields_]))]
+                      if ((not f[trigger_fields_]) or set(fields).intersection(f[trigger_fields_]))]
 
         mapping = {}
+        fresults = {}
         for function in to_compute:
-            # use admin user for accessing objects having rules defined on store fields
-            target_ids = [id for id in function[id_mapping_fnct_](self, cr, SUPERUSER_ID, ids, context) if id]
+            fid = id(function[id_mapping_fnct_])
+            if not fid in fresults:
+                # use admin user for accessing objects having rules defined on store fields
+                fresults[fid] = [id2 for id2 in function[id_mapping_fnct_](self, cr, SUPERUSER_ID, ids, context) if id2]
+            target_ids = fresults[fid]
 
             # the compound key must consider the priority and model name
             key = (function[priority_], function[model_name_])
             for target_id in target_ids:
-                mapping.setdefault(key, {}).setdefault(target_id,set()).add(tuple(function))
+                mapping.setdefault(key, {}).setdefault(target_id, set()).add(tuple(function))
 
         # Here mapping looks like:
         # { (10, 'model_a') : { target_id1: [ (function_1_tuple, function_2_tuple) ], ... }
@@ -4368,15 +4372,15 @@ class BaseModel(object):
         # call_map =
         #   { (10, 'model_a') : [(10, 'model_a', [record_ids,], [function_fields,])] }
         call_map = {}
-        for ((priority,model), id_map) in mapping.iteritems():
+        for ((priority, model), id_map) in mapping.iteritems():
             functions_ids_maps = {}
             # function_ids_maps =
             #   { (function_1_tuple, function_2_tuple) : [target_id1, target_id2, ..] }
-            for id, functions in id_map.iteritems():
-                functions_ids_maps.setdefault(tuple(functions), []).append(id)
+            for fid, functions in id_map.iteritems():
+                functions_ids_maps.setdefault(tuple(functions), []).append(fid)
             for functions, ids in functions_ids_maps.iteritems():
-                call_map.setdefault((priority,model),[]).append((priority, model, ids,
-                                                                 [f[func_field_to_compute_] for f in functions]))
+                call_map.setdefault((priority, model), []).append((priority, model, ids,
+                                                                   [f[func_field_to_compute_] for f in functions]))
         ordered_keys = call_map.keys()
         ordered_keys.sort()
         result = []
