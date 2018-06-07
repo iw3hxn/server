@@ -3912,31 +3912,22 @@ class BaseModel(object):
 
         parents_changed = []
         parent_order = self._parent_order or self._order
-        if self._parent_store:
+        if self._parent_store and (self._parent_name in vals):
             # The parent_left/right computation may take up to
             # 5 seconds. No need to recompute the values if the
-            # parent and order field are the same.
+            # parent is the same.
             # Note: to respect parent_order, nodes must be processed in
             # order, so ``parents_changed`` must be ordered properly.
-            query = "SELECT id FROM %s WHERE id IN %%s" % (self._table,)
-            query_params = [tuple(ids)]
-            query_clause = ""
-            parent_params = [self._parent_name]
-            for param in parent_order.split(','):
-                parent_params.append(param.strip())
-            for parent_param in parent_params:
-                if parent_param in vals:
-                    parents_changed = True
-                    parent_val = vals[parent_param]
-                    if parent_val:
-                        query_clause += (query_clause and ' OR ' or '') + "%s != %%s OR %s IS NULL" % (parent_param,parent_param)
-                        query_params.append(parent_val)
-                    else:
-                        query_clause += (query_clause and ' OR ' or '') + "%s IS NOT NULL" % (parent_param,)
-            if parents_changed:
-                query += (query_clause and (' AND (' + query_clause + ')') or '') + " ORDER BY %s" % (self._parent_order,)
-                cr.execute(query, tuple(query_params))
-                parents_changed = map(operator.itemgetter(0), cr.fetchall())
+            parent_val = vals[self._parent_name]
+            if parent_val:
+                query = "SELECT id FROM %s WHERE id IN %%s AND (%s != %%s OR %s IS NULL) ORDER BY %s" % \
+                                (self._table, self._parent_name, self._parent_name, parent_order)
+                cr.execute(query, (tuple(ids), parent_val))
+            else:
+                query = "SELECT id FROM %s WHERE id IN %%s AND (%s IS NOT NULL) ORDER BY %s" % \
+                                (self._table, self._parent_name, parent_order)
+                cr.execute(query, (tuple(ids),))
+            parents_changed = map(operator.itemgetter(0), cr.fetchall())
 
         upd0 = []
         upd1 = []
@@ -3982,10 +3973,8 @@ class BaseModel(object):
                         if not src_trans:
                             src_trans = vals[f]
                             # Inserting value to DB
-                            # OCB at revision 4329
                             context_wo_lang = dict(context, lang=None)
                             self.write(cr, user, ids, {f: vals[f]}, context=context_wo_lang)
-                            #self.write(cr, user, ids, {f: vals[f]})
                         self.pool.get('ir.translation')._set_ids(cr, user, self._name+','+f, 'model', context['lang'], ids, vals[f], src_trans)
 
 
@@ -4033,15 +4022,17 @@ class BaseModel(object):
             if self.pool._init:
                 self.pool._init_parent[self._name] = True
             else:
-                for id in parents_changed:
-                    cr.execute('SELECT parent_left, parent_right, %s FROM %s WHERE id=%%s' % (self._parent_name, self._table,), (id,))
-                    pleft, pright, parent_val = cr.fetchone()
-                    distance = pright - pleft + 1
+                order = self._parent_order or self._order
+                parent_val = vals[self._parent_name]
+                if parent_val:
+                    clause, params = '%s=%%s' % (self._parent_name,), (parent_val,)
+                else:
+                    clause, params = '%s IS NULL' % (self._parent_name,), ()
 
-                    if parent_val:
-                        clause, params = '%s=%%s' % (self._parent_name,), (parent_val,)
-                    else:
-                        clause, params = '%s IS NULL' % (self._parent_name,), ()
+                for id in parents_changed:
+                    cr.execute('SELECT parent_left, parent_right FROM %s WHERE id=%%s' % (self._table,), (id,))
+                    pleft, pright = cr.fetchone()
+                    distance = pright - pleft + 1
 
                     # Positions of current siblings, to locate proper insertion point;
                     # this can _not_ be fetched outside the loop, as it needs to be refreshed
@@ -4055,10 +4046,6 @@ class BaseModel(object):
                     for (parent_pright, parent_id) in parents:
                         if parent_id == id:
                             break
-                        if not parent_pright:
-                            msg = "alter table {table} drop parent_left; \n alter table {table} drop parent_right; \n And update module".format(table=self._table)
-                            _logger.error(msg)
-                            raise except_orm('DataBase Error', msg)
                         position = parent_pright + 1
 
                     # It's the first node of the parent
@@ -4067,8 +4054,7 @@ class BaseModel(object):
                             position = 1
                         else:
                             cr.execute('select parent_left from '+self._table+' where id=%s', (parent_val,))
-                            parent_left = cr.fetchone()
-                            position = parent_left[0] or 0 + 1
+                            position = cr.fetchone()[0] + 1
 
                     if pleft < position <= pright:
                         raise except_orm(_('UserError'), _('Recursivity Detected.'))
@@ -4233,7 +4219,20 @@ class BaseModel(object):
                 upd0 = upd0 + ',"' + field + '"'
                 upd1 = upd1 + ',' + self._columns[field]._symbol_set[0]
                 upd2.append(self._columns[field]._symbol_set[1](vals[field]))
+                #for the function fields that receive a value, we set them directly in the database 
+                #(they may be required), but we also need to trigger the _fct_inv()
+                if (hasattr(self._columns[field], '_fnct_inv')) and not isinstance(self._columns[field], fields.related):
+                    #TODO: this way to special case the related fields is really creepy but it shouldn't be changed at
+                    #one week of the release candidate. It seems the only good way to handle correctly this is to add an
+                    #attribute to make a field `really readonly´ and thus totally ignored by the create()... otherwise
+                    #if, for example, the related has a default value (for usability) then the fct_inv is called and it
+                    #may raise some access rights error. Changing this is a too big change for now, and is thus postponed
+                    #after the release but, definitively, the behavior shouldn't be different for related and function
+                    #fields.
+                    upd_todo.append(field)
             else:
+                #TODO: this `if´ statement should be removed because there is no good reason to special case the fields
+                #related. See the above TODO comment for further explanations.
                 if not isinstance(self._columns[field], fields.related):
                     upd_todo.append(field)
             if field in self._columns \
@@ -4252,27 +4251,21 @@ class BaseModel(object):
                 self.pool._init_parent[self._name] = True
             else:
                 parent = vals.get(self._parent_name, False)
-                where_clause = ' where ' + self._parent_name
                 if parent:
-                    where_clause += '=%s'
-                    where_params = (parent,)
+                    cr.execute('select parent_right from '+self._table+' where '+self._parent_name+'=%s order by '+(self._parent_order or self._order), (parent,))
+                    pleft_old = None
+                    result_p = cr.fetchall()
+                    for (pleft,) in result_p:
+                        if not pleft:
+                            break
+                        pleft_old = pleft
+                    if not pleft_old:
+                        cr.execute('select parent_left from '+self._table+' where id=%s', (parent,))
+                        pleft_old = cr.fetchone()[0]
+                    pleft = pleft_old
                 else:
-                    where_clause += ' is null'
-                    where_params = tuple()
-
-                cr.execute('select parent_right from ' + self._table + where_clause + ' order by ' + (
-                self._parent_order or self._order), where_params)
-                pleft_old = None
-                result_p = cr.fetchall()
-                for (pleft,) in result_p:
-                    if not pleft:
-                        break
-                    pleft_old = pleft
-                if not pleft_old and parent:
-                    cr.execute('select parent_left from ' + self._table + ' where id=%s', (parent,))
-                    pleft_old = cr.fetchone()[0]
-                pleft = pleft_old or 0
-
+                    cr.execute('select max(parent_right) from '+self._table)
+                    pleft = cr.fetchone()[0] or 0
                 cr.execute('update '+self._table+' set parent_left=parent_left+2 where parent_left>%s', (pleft,))
                 cr.execute('update '+self._table+' set parent_right=parent_right+2 where parent_right>%s', (pleft,))
                 cr.execute('update '+self._table+' set parent_left=%s,parent_right=%s where id=%s', (pleft+1, pleft+2, id_new))
@@ -4289,7 +4282,9 @@ class BaseModel(object):
         self._validate(cr, user, [id_new], context)
 
         if not context.get('no_store_function', False):
-            result += self._store_get_values(cr, user, [id_new], vals.keys(), context)
+            result += self._store_get_values(cr, user, [id_new],
+                list(set(vals.keys() + self._inherits.values())),
+                context)
             result.sort()
             done = []
             for order, object, ids, fields2 in result:
@@ -4515,7 +4510,13 @@ class BaseModel(object):
 
            :param query: the current query object
         """
+        if uid == SUPERUSER_ID:
+            return
+
         def apply_rule(added_clause, added_params, added_tables, parent_model=None, child_object=None):
+            """ :param string parent_model: string of the parent model
+                :param model child_object: model object, base of the rule application
+            """
             if added_clause:
                 if parent_model and child_object:
                     # as inherited rules are being applied, we need to add the missing JOIN
