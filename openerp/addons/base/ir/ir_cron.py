@@ -202,6 +202,8 @@ class ir_cron(osv.osv):
         thread (which has to close it itself).
 
         """
+        if tools.config.get('exclude_cron', False):
+            return True
         db = self.pool.db
         cr = db.cursor()
         db_name = db.dbname
