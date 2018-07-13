@@ -61,19 +61,24 @@ class ir_sequence(openerp.osv.osv.osv):
         res = dict.fromkeys(ids)
         for seq_id in ids:
             this_obj = self.browse(cr, user, seq_id, context=context)
-            if  this_obj.implementation != 'standard':
+            if this_obj.implementation != 'standard':
                 res[seq_id] = this_obj.number_next
             else:
                 # get number from postgres sequence. Cannot use
                 # currval, because that might give an error when
                 # not having used nextval before.
-                statement = (
-                    "SELECT last_value, increment_by, is_called"
-                    " FROM ir_sequence_%03d"
-                    % seq_id)
+                if cr._cnx.server_version < 100000:
+                    statement = (
+                        "SELECT last_value, increment_by, is_called"
+                        " FROM ir_sequence_%03d"
+                        % seq_id)
+                else:
+                    statement = """SELECT last_value, (SELECT increment_by FROM pg_sequences WHERE sequencename = 'ir_sequence_%(seq_id)03d'), is_called FROM ir_sequence_%(seq_id)03d""" % {
+                        'seq_id': seq_id}
+
                 cr.execute(statement)
                 (last_value, increment_by, is_called) = cr.fetchone()
-                if  is_called:
+                if is_called:
                     res[seq_id] = last_value + increment_by
                 else:
                     res[seq_id] = last_value
