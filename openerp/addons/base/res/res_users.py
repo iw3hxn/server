@@ -384,6 +384,7 @@ class users(osv.osv):
     SELF_WRITEABLE_FIELDS = ['menu_tips','view', 'password', 'signature', 'action_id', 'company_id', 'user_email', 'name']
 
     def write(self, cr, uid, ids, values, context=None):
+        self.context_get.clear_cache(self)
         if not hasattr(ids, '__iter__'):
             ids = [ids]
         if ids == [uid]:
@@ -411,6 +412,7 @@ class users(osv.osv):
         return res
 
     def unlink(self, cr, uid, ids, context=None):
+        self.context_get.clear_cache(self)
         if 1 in ids:
             raise osv.except_osv(_('Can not remove root user!'), _('You can not remove the admin user as it is used internally for resources created by OpenERP (updates, module installation, ...)'))
         db = cr.dbname
@@ -443,6 +445,7 @@ class users(osv.osv):
         copydef.update(default)
         return super(users, self).copy(cr, uid, id, copydef, context)
 
+    @tools.ormcache(skiparg=3)
     def context_get(self, cr, uid, context=None):
         user = self.browse(cr, uid, uid, context)
         result = {}
@@ -670,6 +673,7 @@ class users_implied(osv.osv):
     _inherit = 'res.users'
 
     def create(self, cr, uid, values, context=None):
+        self.context_get.clear_cache(self)
         groups = values.pop('groups_id', None)
         user_id = super(users_implied, self).create(cr, uid, values, context)
         if groups:
