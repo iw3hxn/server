@@ -1708,9 +1708,12 @@ class BaseModel(object):
                         search_context = dict(context)
                         if column._context and not isinstance(column._context, basestring):
                             search_context.update(column._context)
-                        attrs['selection'] = relation._name_search(cr, user, '', dom, context=search_context, limit=None, name_get_uid=1)
-                        if (node.get('required') and not int(node.get('required'))) or not column.required:
-                            attrs['selection'].append((False, ''))
+                        if relation:
+                            attrs['selection'] = relation._name_search(cr, user, '', dom, context=search_context, limit=None, name_get_uid=1)
+                            if (node.get('required') and not int(node.get('required'))) or not column.required:
+                                attrs['selection'].append((False, ''))
+                        else:
+                            _logger.error('{0} have no relation'.format(column.string))
                 fields[node.get('name')] = attrs
 
                 field = model_fields.get(node.get('name'))
