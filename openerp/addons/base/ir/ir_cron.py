@@ -50,6 +50,28 @@ job_in_progress = True
 def str2tuple(s):
     return eval('tuple(%s)' % (s or ''))
 
+
+def get_color(self, cr, uid, ids, field_name, arg, context):
+    res = {}
+    for line in self.read(cr, uid, ids, ['active', 'interval_type'], context):
+        if line['active']:
+            if line['interval_type'] == 'minutes':
+                row_color = 'black'
+            elif line['interval_type'] == 'hours':
+                row_color = 'blue'
+            elif line['interval_type'] == 'days':
+                row_color = 'green'
+            elif line['interval_type'] == 'work_days':
+                row_color = 'forestgreen'
+            elif line['interval_type'] == 'weeks':
+                row_color = 'cadetblue'
+            elif line['interval_type'] == 'months':
+                row_color = 'brown'
+        else:
+            row_color = 'grey'
+        res[line['id']] = row_color
+    return res
+
 _intervalTypes = {
     'work_days': lambda interval: relativedelta(days=interval),
     'days': lambda interval: relativedelta(days=interval),
@@ -83,7 +105,8 @@ class ir_cron(osv.osv):
         'model': fields.char('Object', size=64, help="Model name on which the method to be called is located, e.g. 'res.partner'."),
         'function': fields.char('Method', size=64, help="Name of the method to be called when this job is processed."),
         'args': fields.text('Arguments', help="Arguments to be passed to the method, e.g. (uid,)."),
-        'priority': fields.integer('Priority', help='The priority of the job, as an integer: 0 means higher priority, 10 means lower priority.')
+        'priority': fields.integer('Priority', help='The priority of the job, as an integer: 0 means higher priority, 10 means lower priority.'),
+        'row_color': fields.function(get_color, string='Row color', type='char', readonly=True, method=True, store=False)
     }
 
     _defaults = {
@@ -96,6 +119,8 @@ class ir_cron(osv.osv):
         'active' : lambda *a: 1,
         'doall' : lambda *a: 1
     }
+
+    _order = 'active desc'
 
     def _check_args(self, cr, uid, ids, context=None):
         try:

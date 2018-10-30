@@ -1476,8 +1476,11 @@
             <field name="model">ir.cron</field>
             <field name="type">tree</field>
             <field name="arch" type="xml">
-                <tree string="Scheduled Actions">
+                <tree string="Scheduled Actions"
+                    colors="aqua:row_color=='aqua';black:row_color=='black';blue:row_color=='blue';brown:row_color=='brown';cadetblue:row_color=='cadetblue';darkblue:row_color=='darkblue';fuchsia:row_color=='fuchsia';forestgreen:row_color=='forestgreen';orange:row_color=='orange';green:row_color=='green';grey:row_color=='grey';red:row_color=='red';">
+                    <field name="row_color" invisible="1"/>
                     <field name="priority" string="Sequence"/>
+                    <field name="active"/>
                     <field name="name"/>
                     <field name="nextcall"/>
                     <field name="interval_number"/>
