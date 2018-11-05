@@ -97,7 +97,7 @@ class module(osv.osv):
         info = {}
         try:
             info = addons.load_information_from_description_file(name)
-            info['version'] = release.major_version + '.' + info['version']
+            info['version'] = release.major_version + '.' + info.get('version', '0')
         except Exception:
             _logger.debug('Error when trying to fetch informations for '
                           'module %s', name, exc_info=True)
@@ -212,6 +212,7 @@ class module(osv.osv):
                 ('GPL-2 or any later version', 'GPL-2 or later version'),
                 ('GPL-3', 'GPL Version 3'),
                 ('GPL-3 or any later version', 'GPL-3 or later version'),
+                ('LGPL-3', 'LGPL-3 or later version'),
                 ('AGPL-3', 'Affero GPL-3'),
                 ('Other OSI approved licence', 'Other OSI Approved Licence'),
                 ('Other proprietary', 'Other Proprietary')
