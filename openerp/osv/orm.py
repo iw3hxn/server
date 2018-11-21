@@ -4098,14 +4098,16 @@ class BaseModel(object):
                 if id not in done[key]:
                     done[key][id] = True
                     todo.append(id)
-
-        if done:
-            for element in done:
-                model = element[0]
-                fields_to_recompute = [x for x in element[1]]
-                todo_ids = done[element].keys()
-                _logger.debug("Object {0} Store setvalues '{1}' for id {2}".format(model, fields_to_recompute, todo_ids))
-                self.pool.get(model)._store_set_values(cr, user, todo_ids, fields_to_recompute, context)
+            _logger.debug("Store setvalues '%s'", fields_to_recompute)
+            self.pool.get(object)._store_set_values(cr, user, todo, fields_to_recompute, context)
+        # todo check better CARLO
+        # if done:
+        #     for element in done:
+        #         model = element[0]
+        #         fields_to_recompute = [x for x in element[1]]
+        #         todo_ids = done[element].keys()
+        #         _logger.debug("Object {0} Store setvalues '{1}' for id {2}".format(model, fields_to_recompute, todo_ids))
+        #         self.pool.get(model)._store_set_values(cr, user, todo_ids, fields_to_recompute, context)
 
         wf_service = netsvc.LocalService("workflow")
         for id in ids:
