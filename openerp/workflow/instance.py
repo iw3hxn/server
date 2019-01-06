@@ -21,7 +21,12 @@ def create(cr, ident, wkf_id):
 
 def delete(cr, ident):
     (uid, res_type, res_id) = ident
+    cr.execute("SELECT id FROM wkf_instance where res_id = {0} and res_type = '{1}'".format(res_id, res_type))
+    instance = cr.dictfetchone()
+    if instance:
+        cr.execute('delete from wkf_workitem where inst_id={0}'.format(instance['id']))
     cr.execute('delete from wkf_instance where res_id=%s and res_type=%s', (res_id, res_type))
+    return True
 
 
 def validate(cr, inst_id, ident, signal, force_running=False):
