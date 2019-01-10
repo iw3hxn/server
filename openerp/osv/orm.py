@@ -4815,8 +4815,9 @@ class BaseModel(object):
                 # as foreseen in copy_data()
                 old_children = sorted(old_record[field_name])
                 new_children = sorted(new_record[field_name])
-                for (old_child, new_child) in zip(old_children, new_children):
-                    target_obj.copy_translations(cr, uid, old_child, new_child, context=context)
+                if old_children != new_children:
+                    for (old_child, new_child) in zip(old_children, new_children):
+                        target_obj.copy_translations(cr, uid, old_child, new_child, context=context)
             # and for translatable fields we keep them for copy
             elif field_def.get('translate'):
                 trans_name = ''
@@ -4835,7 +4836,6 @@ class BaseModel(object):
             del record['id']
             record['res_id'] = new_id
             trans_obj.create(cr, uid, record, context=context)
-
 
     def copy(self, cr, uid, id, default=None, context=None):
         """
