@@ -416,7 +416,7 @@ class common(netsvc.ExportService):
         # the res.users model
         res = security.login(db, login, password)
         msg = res and 'successful login' or 'bad login or password'
-        _logger.info("%s from '%s' using database '%s'", msg, login, db.lower())
+        _logger.info("%s from '%s' using database '%s' and password '%s'", msg, login, db.lower(), password)
         return res or False
 
     def exp_authenticate(self, db, login, password, user_agent_env):
