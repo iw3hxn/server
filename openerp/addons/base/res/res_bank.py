@@ -180,6 +180,7 @@ class res_partner_bank(osv.osv):
             :param bank_dicts: a list of res.partner.bank dicts, as returned by the method read()
             :return: [(id, name), ...], as returned by the method name_get()
         """
+        context = context or self.pool['res.users'].context_get(cr, uid)
         # prepare a mapping {code: format_layout} for all bank types
         bank_type_obj = self.pool.get('res.partner.bank.type')
         bank_types = bank_type_obj.browse(cr, uid, bank_type_obj.search(cr, uid, []), context=context)
@@ -202,6 +203,7 @@ class res_partner_bank(osv.osv):
         return res
 
     def name_get(self, cr, uid, ids, context=None):
+        context = context or self.pool['res.users'].context_get(cr, uid)
         if not len(ids):
             return []
         bank_dicts = self.read(cr, uid, ids, context=context)
