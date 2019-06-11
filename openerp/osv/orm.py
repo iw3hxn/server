@@ -839,19 +839,22 @@ class BaseModel(object):
                     )
             else:
                 for key, val in vals.items():
-                    if cols[k][key] != vals[key]:
-                        cr.execute('update ir_model_fields set field_description=%s where model=%s and name=%s', (vals['field_description'], vals['model'], vals['name']))
-                        cr.commit()
-                        cr.execute("""UPDATE ir_model_fields SET
-                            model_id=%s, field_description=%s, ttype=%s, relation=%s,
-                            view_load=%s, select_level=%s, readonly=%s ,required=%s, selectable=%s, relation_field=%s, translate=%s, serialization_field_id=%s
-                        WHERE
-                            model=%s AND name=%s""", (
-                                vals['model_id'], vals['field_description'], vals['ttype'],
-                                vals['relation'], bool(vals['view_load']),
-                                vals['select_level'], bool(vals['readonly']), bool(vals['required']), bool(vals['selectable']), vals['relation_field'], bool(vals['translate']), vals['serialization_field_id'], vals['model'], vals['name']
-                            ))
-                        break
+                    try:
+                        if cols[k][key] != vals[key]:
+                            cr.execute('update ir_model_fields set field_description=%s where model=%s and name=%s', (vals['field_description'], vals['model'], vals['name']))
+                            cr.commit()
+                            cr.execute("""UPDATE ir_model_fields SET
+                                model_id=%s, field_description=%s, ttype=%s, relation=%s,
+                                view_load=%s, select_level=%s, readonly=%s ,required=%s, selectable=%s, relation_field=%s, translate=%s, serialization_field_id=%s
+                            WHERE
+                                model=%s AND name=%s""", (
+                                    vals['model_id'], vals['field_description'], vals['ttype'],
+                                    vals['relation'], bool(vals['view_load']),
+                                    vals['select_level'], bool(vals['readonly']), bool(vals['required']), bool(vals['selectable']), vals['relation_field'], bool(vals['translate']), vals['serialization_field_id'], vals['model'], vals['name']
+                                ))
+                            break
+                    except Exception as e:
+                        _logger.error(e)
         cr.commit()
 
     #
