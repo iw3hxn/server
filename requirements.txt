@@ -40,7 +40,7 @@ xlwt==0.7.5
 Genshi == 0.6
 pyxb==1.2.4
 unidecode
-requests==2.6.0
+requests==2.20.0
 pyvies
 validate_email
 html2text
