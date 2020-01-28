@@ -41,6 +41,8 @@ import openerp.modules
 import openerp.exceptions
 from openerp.service import http_server
 
+from security import magic_md5, gen_salt, encrypt_md5
+
 #.apidoc title: Exported Service methods
 #.apidoc module-mods: member-order: bysource
 
@@ -359,7 +361,9 @@ class db(netsvc.ExportService):
         return res
 
     def exp_change_admin_password(self, new_password):
-        tools.config['admin_passwd'] = new_password
+        salt = gen_salt()
+        encrypted = encrypt_md5(new_password, salt)
+        tools.config['admin_passwd'] = encrypted
         tools.config.save()
         return True
 
