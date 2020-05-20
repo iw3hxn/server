@@ -495,7 +495,7 @@ class browse_record(object):
     def __getattr__(self, name):
         try:
             return self[name]
-        except KeyError, e:
+        except KeyError as e:
             raise AttributeError(e)
 
     def __contains__(self, name):
@@ -3509,7 +3509,6 @@ class BaseModel(object):
                 if rule_clause:
                     cr.execute(query, [tuple(sub_ids)] + rule_params)
                     if cr.rowcount != len(sub_ids):
-                        print query
                         raise except_orm(_('AccessError'),
                                          _('Operation prohibited by access rules, or performed on an already deleted document (Operation: read, Document type: %s).')
                                          % (self._description,))
@@ -3581,7 +3580,11 @@ class BaseModel(object):
                     res2 = self._columns[f].get(cr, self, ids, f, user, context=context, values=res)
                     for record in res:
                         if res2:
-                            record[f] = res2[record['id']]
+                            try:
+                                record[f] = res2[record['id']]
+                            except KeyError as e:
+                                _logger.error("Key Error %s", e)
+                                record[f] = []
                         else:
                             record[f] = []
         readonly = None
