@@ -44,10 +44,12 @@ from openerp.loglevels import ustr
 
 _logger = logging.getLogger(__name__)
 
+
 class MailDeliveryException(osv.except_osv):
     """Specific exception subclass for mail delivery errors"""
     def __init__(self, name, value):
         super(MailDeliveryException, self).__init__(name, value)
+
 
 class WriteToLogger(object):
     """debugging helper: behave as a fd and pipe to logger at the given level"""
@@ -72,6 +74,7 @@ def try_coerce_ascii(string_utf8):
     except UnicodeDecodeError:
         return
     return string_utf8
+
 
 def encode_header(header_text):
     """Returns an appropriate representation of the given header value,
@@ -99,6 +102,7 @@ def encode_header(header_text):
     return header_text_ascii if header_text_ascii\
          else Header(header_text_utf8, 'utf-8')
 
+
 def encode_header_param(param_text):
     """Returns an appropriate RFC2047 encoded representation of the given
        header parameter value, suitable for direct assignation as the
@@ -122,6 +126,7 @@ def encode_header_param(param_text):
 name_with_email_pattern = re.compile(r'("[^<@>]+")\s*<([^ ,<@]+@[^> ,]+)>')
 address_pattern = re.compile(r'([^ ,<@]+@[^> ,]+)')
 
+
 def extract_rfc2822_addresses(text):
     """Returns a list of valid RFC2822 addresses
        that can be found in ``source``, ignoring 
@@ -130,6 +135,7 @@ def extract_rfc2822_addresses(text):
     if not text: return []
     candidates = address_pattern.findall(tools.ustr(text).encode('utf-8'))
     return filter(try_coerce_ascii, candidates)
+
 
 def encode_rfc2822_address_header(header_text):
     """If ``header_text`` contains non-ASCII characters,
@@ -198,7 +204,7 @@ class ir_mail_server(osv.osv):
             logpiper = WriteToLogger(_logger)
             smtplib.stderr = logpiper
             smtplib.stdout = logpiper
-        return super(ir_mail_server, self).__init__(*args,**kwargs)
+        return super(ir_mail_server, self).__init__(*args, **kwargs)
 
     def name_get(self, cr, uid, ids, context=None):
         return [(a["id"], "(%s)" % (a['name'])) for a in self.read(cr, uid, ids, ['name'], context=context)]
@@ -210,7 +216,7 @@ class ir_mail_server(osv.osv):
                 smtp = self.connect(smtp_server.smtp_host, smtp_server.smtp_port, user=smtp_server.smtp_user,
                                     password=smtp_server.smtp_pass, encryption=smtp_server.smtp_encryption,
                                     smtp_debug=smtp_server.smtp_debug)
-            except Exception, e:
+            except Exception as e:
                 raise osv.except_osv(_("Connection test failed!"), _("Here is what we got instead:\n %s") % tools.ustr(e))
             finally:
                 try:
@@ -220,11 +226,12 @@ class ir_mail_server(osv.osv):
                     pass
         raise osv.except_osv(_("Connection test succeeded!"), _("Everything seems properly set up!"))
 
-    def connect(self, host, port, user=None, password=None, encryption=False, smtp_debug=False):
+    def connect(self, host, port, user=None, password=None, encryption=False, smtp_debug=False, timeout=10):
         """Returns a new SMTP connection to the give SMTP server, authenticated
            with ``user`` and ``password`` if provided, and encrypted as requested
            by the ``encryption`` parameter.
         
+           :param timeout:
            :param host: host or IP of SMTP server to connect to
            :param int port: SMTP port to connect to
            :param user: optional username to authenticate with
@@ -239,9 +246,9 @@ class ir_mail_server(osv.osv):
                              _("SMTP-over-SSL mode unavailable"),
                              _("Your OpenERP Server does not support SMTP-over-SSL. You could use STARTTLS instead."
                                "If SSL is needed, an upgrade to Python 2.6 on the server-side should do the trick."))
-            connection = smtplib.SMTP_SSL(host, port)
+            connection = smtplib.SMTP_SSL(host, port, timeout=timeout)
         else:
-            connection = smtplib.SMTP(host, port)
+            connection = smtplib.SMTP(host, port, timeout=timeout)
         connection.set_debuglevel(smtp_debug)
         if encryption == 'starttls':
             # starttls() will perform ehlo() if needed first
@@ -463,7 +470,7 @@ class ir_mail_server(osv.osv):
                 except Exception:
                     # ignored, just a consequence of the previous exception
                     pass
-        except Exception, e:
+        except Exception as e:
             msg = _("Mail delivery failed via SMTP server '%s'.\n%s: %s") % (tools.ustr(smtp_server),
                                                                              e.__class__.__name__,
                                                                              tools.ustr(e))
