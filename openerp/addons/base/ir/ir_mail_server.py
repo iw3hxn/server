@@ -463,18 +463,21 @@ class ir_mail_server(osv.osv):
             try:
                 smtp = self.connect(smtp_server, smtp_port, smtp_user, smtp_password, smtp_encryption, smtp_debug)
                 smtp.sendmail(smtp_from, smtp_to_list, message.as_string())
+            except Exception as e:
+                _logger.info("Error smtp.sendmail : {}".format(tools.ustr(e)))
             finally:
                 try:
                     # Close Connection of SMTP Server
                     smtp.quit()
-                except Exception:
+                except Exception as e:
                     # ignored, just a consequence of the previous exception
+                    _logger.info("Error smtp.quit(): {}".format(tools.ustr(e)))
                     pass
         except Exception as e:
             msg = _("Mail delivery failed via SMTP server '%s'.\n%s: %s") % (tools.ustr(smtp_server),
                                                                              e.__class__.__name__,
                                                                              tools.ustr(e))
-            _logger.exception(msg)
+            _logger.info(msg)
             raise MailDeliveryException(_("Mail delivery failed"), msg)
         return message_id
 
