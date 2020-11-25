@@ -754,6 +754,9 @@ class report_spool(netsvc.ExportService):
                 self._reports[id]['state'] = True
             except Exception, exception:
                 _logger.exception('Exception: %s\n', str(exception))
+                self._reports[id]['state'] = True
+                self._reports[id]['result'] = "Error \n\n\n\n\n" + str(exception)
+                self._reports[id]['format'] = u'txt'
                 if hasattr(exception, 'name') and hasattr(exception, 'value'):
                     self._reports[id]['exception'] = openerp.exceptions.DeferredException(tools.ustr(exception.name), tools.ustr(exception.value))
                 else:
