@@ -300,6 +300,48 @@ class browse_record_list(list):
         super(browse_record_list, self).__init__(lst)
         self.context = context
 
+    def with_prefetch(self, prefetch=None):
+        """ with_prefetch([prefetch]) -> records
+
+        Return a new version of this recordset that uses the given prefetch
+        object, or a new prefetch object if not given.
+        """
+        return self.browse(self._ids, self.env, prefetch)
+
+    def _mapped_func(self, func):
+        """ Apply function ``func`` on all records in ``self``, and return the
+            result as a list or a recordset (if ``func`` returns recordsets).
+        """
+        if self:
+            vals = [func(rec) for rec in self]
+            if isinstance(vals[0], BaseModel):
+                return vals[0].union(*vals)         # union of all recordsets
+            return vals
+        else:
+            vals = func(self)
+            return vals if isinstance(vals, BaseModel) else []
+
+    def mapped(self, func):
+        """ Apply ``func`` on all records in ``self``, and return the result as a
+            list or a recordset (if ``func`` return recordsets). In the latter
+            case, the order of the returned recordset is arbitrary.
+
+            :param func: a function or a dot-separated sequence of field names
+                (string); any falsy value simply returns the recordset ``self``
+        """
+        if not func:
+            return self                 # support for an empty path of fields
+        if isinstance(func, str):
+            recs = self
+            for name in func.split('.'):
+                recs = recs._mapped_func(operator.itemgetter(name))
+                if isinstance(recs, BaseModel):
+                    # allow feedback to self's prefetch object
+                    recs = recs.with_prefetch(self._prefetch)
+            return recs
+        else:
+            return self._mapped_func(func)
+
 
 class browse_record(object):
     """ An object that behaves like a row of an object's table.
