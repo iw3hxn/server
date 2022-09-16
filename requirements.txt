@@ -1,7 +1,7 @@
 Babel==1.3
 -e git+https://github.com/baxeico/pycodicefiscale.git@b4ce5bf388ba66be797f055eb9e16942766e4adb#egg=codicefiscale
 Jinja2==2.7.3
-Mako==1.0.0
+Mako==1.2.2
 MarkupSafe==0.23
 pillow
 PyYAML==5.1
