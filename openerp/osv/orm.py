@@ -2658,7 +2658,7 @@ class BaseModel(object):
 
         for d in result:
             if groupby:
-                d['__domain'] = [(groupby, '=', alldata[d['id']][groupby] or False)] + domain
+                d['__domain'] = [(groupby, '=', alldata[d['id']].get(groupby, False))] + domain
                 if not isinstance(groupby_list, (str, unicode)):
                     if groupby or not context.get('group_by_no_leaf', False):
                         d['__context'] = {'group_by': groupby_list[1:]}
@@ -3147,11 +3147,13 @@ class BaseModel(object):
 
     def _auto_end(self, cr, context=None):
         """ Create the foreign keys recorded by _auto_init. """
-        for t, k, r, d in self._foreign_keys:
-            cr.execute('ALTER TABLE "%s" ADD FOREIGN KEY ("%s") REFERENCES "%s" ON DELETE %s' % (t, k, r, d))
-        cr.commit()
-        del self._foreign_keys
-
+        try:
+            for t, k, r, d in self._foreign_keys:
+                cr.execute('ALTER TABLE "%s" ADD FOREIGN KEY ("%s") REFERENCES "%s" ON DELETE %s' % (t, k, r, d))
+            cr.commit()
+            del self._foreign_keys
+        except Exception as e:
+            print(e)
 
     def _table_exist(self, cr):
         cr.execute("SELECT relname FROM pg_class WHERE relkind IN ('r','v') AND relname=%s", (self._table,))
